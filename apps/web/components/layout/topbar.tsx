@@ -46,10 +46,8 @@ export function Topbar() {
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
         <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden">
-              <Menu className="h-5 w-5" />
-            </Button>
+          <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" />}>
+            <Menu className="h-5 w-5" />
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0">
             <SidebarNav />
@@ -59,13 +57,13 @@ export function Topbar() {
       </div>
       {user && (
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 px-2">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-xs">{initials(user.full_name)}</AvatarFallback>
-              </Avatar>
-              <span className="hidden text-sm font-medium sm:inline">{user.full_name}</span>
-            </Button>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" className="flex items-center gap-2 px-2" />}
+          >
+            <Avatar className="h-7 w-7">
+              <AvatarFallback className="text-xs">{initials(user.full_name)}</AvatarFallback>
+            </Avatar>
+            <span className="hidden text-sm font-medium sm:inline">{user.full_name}</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>

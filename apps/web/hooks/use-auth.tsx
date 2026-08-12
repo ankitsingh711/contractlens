@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch, clearToken, getToken, setToken } from "@/lib/api-client";
 import type { TokenResponse, User } from "@/types/auth";
@@ -20,32 +21,28 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const CURRENT_USER_KEY = ["auth", "me"];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [hasToken, setHasToken] = useState(() => Boolean(getToken()));
   const router = useRouter();
+  const queryClient = useQueryClient();
 
-  const loadUser = useCallback(async () => {
-    const token = getToken();
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-    try {
-      const currentUser = await apiFetch<User>("/auth/me");
-      setUser(currentUser);
-    } catch {
-      clearToken();
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadUser();
-  }, [loadUser]);
+  const { data: user, isLoading } = useQuery({
+    queryKey: CURRENT_USER_KEY,
+    queryFn: async () => {
+      try {
+        return await apiFetch<User>("/auth/me");
+      } catch {
+        clearToken();
+        setHasToken(false);
+        return null;
+      }
+    },
+    enabled: hasToken,
+    initialData: hasToken ? undefined : null,
+    staleTime: 5 * 60_000,
+  });
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -55,10 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         auth: false,
       });
       setToken(token.access_token);
-      await loadUser();
+      setHasToken(true);
+      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_KEY });
       router.push("/dashboard");
     },
-    [loadUser, router]
+    [queryClient, router]
   );
 
   const register = useCallback(
@@ -74,20 +72,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         auth: false,
       });
       setToken(token.access_token);
-      await loadUser();
+      setHasToken(true);
+      await queryClient.invalidateQueries({ queryKey: CURRENT_USER_KEY });
       router.push("/dashboard");
     },
-    [loadUser, router]
+    [queryClient, router]
   );
 
   const logout = useCallback(() => {
     clearToken();
-    setUser(null);
+    setHasToken(false);
+    queryClient.setQueryData(CURRENT_USER_KEY, null);
     router.push("/login");
-  }, [router]);
+  }, [queryClient, router]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user: user ?? null, isLoading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
