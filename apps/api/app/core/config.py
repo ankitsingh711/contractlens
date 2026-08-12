@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = (
-        "postgresql+asyncpg://contractlens:contractlens@localhost:5432/contractlens"
+        "postgresql+asyncpg://contractlens:contractlens@localhost:5433/contractlens"
     )
 
     # Redis
