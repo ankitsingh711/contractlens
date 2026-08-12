@@ -1,16 +1,24 @@
+"use client";
+
 import { FileText, ShieldAlert, MessagesSquare, Gauge } from "lucide-react";
 
+import { DocumentStatusBadge } from "@/components/documents/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-
-const STAT_CARDS = [
-  { label: "Documents", icon: FileText, value: "0" },
-  { label: "High Risk Contracts", icon: ShieldAlert, value: "0" },
-  { label: "AI Questions", icon: MessagesSquare, value: "0" },
-  { label: "Avg Latency", icon: Gauge, value: "—" },
-];
+import { Skeleton } from "@/components/ui/skeleton";
+import { useDocuments } from "@/hooks/use-documents";
 
 export default function DashboardPage() {
+  const { data: documents, isLoading } = useDocuments();
+  const recentDocuments = documents?.slice(0, 5) ?? [];
+
+  const statCards = [
+    { label: "Documents", icon: FileText, value: isLoading ? "—" : String(documents?.length ?? 0) },
+    { label: "High Risk Contracts", icon: ShieldAlert, value: "0" },
+    { label: "AI Questions", icon: MessagesSquare, value: "0" },
+    { label: "Avg Latency", icon: Gauge, value: "—" },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -21,7 +29,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STAT_CARDS.map((stat) => (
+        {statCards.map((stat) => (
           <Card key={stat.label}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -42,11 +50,30 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium">Recent Documents</CardTitle>
           </CardHeader>
           <CardContent>
-            <EmptyState
-              icon={FileText}
-              title="No documents yet"
-              description="Upload a contract to see processing status and analysis here."
-            />
+            {isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : recentDocuments.length > 0 ? (
+              <ul className="space-y-3">
+                {recentDocuments.map((doc) => (
+                  <li key={doc.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{doc.filename}</span>
+                    </span>
+                    <DocumentStatusBadge status={doc.status} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                icon={FileText}
+                title="No documents yet"
+                description="Upload a contract to see processing status and analysis here."
+              />
+            )}
           </CardContent>
         </Card>
         <Card>

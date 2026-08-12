@@ -35,7 +35,10 @@ interface RequestOptions extends RequestInit {
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { auth = true, headers, ...rest } = options;
   const finalHeaders = new Headers(headers);
-  finalHeaders.set("Content-Type", "application/json");
+  // Let the browser set the multipart boundary itself for FormData bodies.
+  if (!(rest.body instanceof FormData)) {
+    finalHeaders.set("Content-Type", "application/json");
+  }
 
   if (auth) {
     const token = getToken();

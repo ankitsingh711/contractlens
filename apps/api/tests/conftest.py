@@ -1,40 +1,43 @@
+import os
 from collections.abc import AsyncGenerator
 
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# Point the app at an isolated test database *before* any app module is
+# imported, so the app's own engine/session factory (used both by request
+# handlers and by background tasks like document processing) targets it.
+_settings_url = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+asyncpg://contractlens:contractlens@localhost:5433/contractlens",
+)
+os.environ["DATABASE_URL"] = _settings_url.rsplit("/", 1)[0] + "/contractlens_test"
 
-from app.core.config import get_settings
-from app.db.base import Base
-from app.db.session import get_db
-from app.main import app
+import pytest_asyncio  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
-settings = get_settings()
-TEST_DATABASE_URL = settings.DATABASE_URL.rsplit("/", 1)[0] + "/contractlens_test"
+from app.db.base import Base  # noqa: E402
+from app.db.session import AsyncSessionLocal, engine  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    engine = create_async_engine(TEST_DATABASE_URL)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False)
-    async with session_maker() as session:
+    async with AsyncSessionLocal() as session:
         yield session
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+    # The engine's connection pool is bound to this test's event loop, which
+    # pytest-asyncio tears down after each test — dispose it so the next
+    # test (a new loop) doesn't reuse now-invalid pooled connections.
     await engine.dispose()
 
 
 @pytest_asyncio.fixture
 async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    async def _get_db_override():
-        yield db_session
-
-    app.dependency_overrides[get_db] = _get_db_override
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
-    app.dependency_overrides.clear()

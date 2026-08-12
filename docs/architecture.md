@@ -43,7 +43,15 @@ All API errors are structured JSON: `{ "error": { "code", "message", "request_id
 
 ## Database
 
-PostgreSQL, accessed exclusively through async SQLAlchemy sessions with Alembic-managed migrations. The `vector` extension (pgvector) is enabled from the first migration even though no vector columns exist yet, so Phase 2/3 can add them without an extension-enabling migration step. Rationale for Postgres+pgvector over a dedicated vector database is in `docs/rag.md`.
+PostgreSQL, accessed exclusively through async SQLAlchemy sessions with Alembic-managed migrations. The `vector` extension (pgvector) was enabled from the first migration, before any vector columns existed, so Phase 2 could add `document_chunks.embedding` (with an HNSW index) plus a generated `tsvector`/GIN column for full-text search without a separate extension-enabling migration. Rationale for Postgres+pgvector over a dedicated vector database is in `docs/rag.md`.
+
+## Document processing pipeline
+
+Upload → object storage → parse (PDF/DOCX/TXT) → document-aware chunk → embed → index, implemented in `app/services/document_service.py` and run as a `FastAPI BackgroundTask` after the upload response returns. `Document.status` moves through `uploading → processing → parsing → chunking → embedding → indexing → completed` (or `failed`, with a stored `error_message`), which is what the frontend polls to show live progress. See `docs/rag.md` for why chunking is document-structure-aware rather than fixed-size, and the README's trade-offs section for why this runs in-process today instead of on a dedicated queue.
+
+### Why asynchronous document processing
+
+Parsing, chunking, and embedding a multi-page contract can take longer than a client wants to wait on an HTTP request. The upload endpoint does the fast, synchronous part (validate, store the file, create the `Document` row) and returns immediately with `status: processing`; the slow part runs as a background task the client polls for. This is also why `Document.status` has multiple intermediate values instead of just "processing"/"done" — the UI can show the user which stage is currently running, not just a spinner.
 
 ## Local development vs. production
 
