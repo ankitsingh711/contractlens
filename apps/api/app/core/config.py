@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     LANGFUSE_SECRET_KEY: str | None = None
     LANGFUSE_HOST: str = "http://localhost:3001"
 
+    # Prompts (resolved relative to the process working directory; the
+    # Docker Compose api service overrides this to an absolute path since
+    # its working directory differs from local dev).
+    PROMPTS_DIR: str = "../../prompts"
+
+    # Retrieval
+    RETRIEVAL_CANDIDATE_POOL_SIZE: int = 20
+    RETRIEVAL_TOP_K: int = 5
+    EVIDENCE_THRESHOLD: float = 0.15
+
     # Budgets
     MAX_LATENCY_MS: int = 8000
     MAX_INPUT_TOKENS: int = 12000
