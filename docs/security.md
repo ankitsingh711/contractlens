@@ -16,7 +16,7 @@
 - **Rate limiting**: per-user/IP request throttling (`RATE_LIMIT_PER_MINUTE`, already reserved in config) via Redis.
 - **Upload hardening**: MIME type validation, file size limits (`MAX_UPLOAD_SIZE_MB`, already reserved in config), and content sniffing beyond trusting the client-provided extension.
 - **Audit logging**: structured, queryable log of who did what to which resource, for compliance-sensitive operations (document access, deletion, sharing).
-- **Prompt injection guardrails**: covered in `docs/agent.md` — document content is treated as untrusted data, never concatenated into system/developer instructions.
+- **Prompt injection guardrails**: partially implemented in Phase 3. The QA prompt template (`prompts/qa/v1.txt`) places SYSTEM INSTRUCTIONS before an explicitly labeled EVIDENCE section, and instructs the model to treat evidence as untrusted document content, never as commands — verified by `tests/test_prompt_injection.py`, which asserts a malicious payload always lands after the instructions/evidence boundary, and that a fake citation marker embedded in document text is never treated as a real citation by `validate_citations()`. The remaining piece — a dedicated LangGraph guardrail node that inspects tool output the same way — lands in Phase 4 alongside the agent itself (see `docs/agent.md`).
 
 ## Why environment-based config over hardcoded values
 

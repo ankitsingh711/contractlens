@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 2 (document upload & processing) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 3 (hybrid retrieval, reranking, citations, RAG) complete.**
 
 ## Why this project exists
 
@@ -64,7 +64,18 @@ Full RAG and agent architecture diagrams land in `docs/rag.md` and `docs/agent.m
 - **Frontend**: drag-and-drop upload (native DnD, no added dependency), a document table with live status polling (auto-refetches while any document is mid-pipeline, stops once terminal), delete action, and the dashboard's document count/recents now reflect real data instead of placeholders.
 - **Tests**: 15/15 backend tests passing (auth + health from Phase 1, plus chunker unit tests and document API integration tests covering upload validation, the full pipeline reaching `completed`, org-scoping, and soft delete).
 
-Everything else described below (hybrid retrieval, the LangGraph agent, risk analysis, evaluations) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
+## What's implemented so far (Phase 3)
+
+- **Hybrid retrieval** (`app/retrieval/`): pgvector cosine similarity (HNSW-indexed) for semantic search + PostgreSQL full-text search (GIN-indexed `tsvector`, `websearch_to_tsquery`/`ts_rank`) for keyword search, combined with **Reciprocal Rank Fusion** — chosen over blending raw scores because cosine similarity and `ts_rank` live on incomparable scales; RRF only needs rank order.
+- **Reranker abstraction** (`app/services/reranking/`): `Reranker` interface; `MockReranker` (lexical-overlap heuristic, deterministic, no API key) and `CohereReranker` (real cross-encoder via Cohere's REST API), selected by `RERANKER_PROVIDER`.
+- **LLM provider abstraction** (`app/services/llm/`): `LLMProvider` interface; `MockLLMProvider` (deterministic — extracts and cites the top retrieved evidence block, so citation validation is exercisable without an API key) and `OpenAILLMProvider`, selected by `LLM_PROVIDER`.
+- **Citation grounding** (`app/services/citations.py`): every generated answer is built from a numbered evidence block; `validate_citations()` strips any citation marker the model produced that doesn't map to an actually-retrieved chunk before the answer ever reaches the caller — a citation that wasn't retrieved from the database cannot appear.
+- **Abstention**: `answer_query()` (`app/services/rag_service.py`) checks the reranked evidence score against `EVIDENCE_THRESHOLD` *before* calling the LLM, and abstains (fixed message, no fabrication) if evidence is insufficient — and abstains again afterward if the model's answer ends up with zero valid citations, rather than showing an unsupported claim.
+- **Prompt versioning**: prompts live in `prompts/<task>/<version>.txt` (not inline strings), loaded via `app/core/prompts.py`; the QA prompt (`prompts/qa/v1.txt`) explicitly separates system instructions from the untrusted evidence section — see the prompt-injection tests in `tests/test_prompt_injection.py`.
+- **API**: `POST /api/search` — hybrid search scoped to the caller's organization (and optionally specific `document_ids`), returning ranked evidence chunks with per-stage scores (vector, keyword, fused, reranked).
+- **Tests**: 30/30 backend tests passing — added citation validation unit tests, RRF fusion unit tests, retrieval integration tests (relevance, org-scoping, document filtering) run against the real pgvector/full-text indexes, RAG answer tests (grounded answer with citations, abstention on no evidence, abstention for an empty organization), and prompt-injection tests.
+
+Everything else described below (the LangGraph agent, risk analysis, evaluations) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
 
 ## Why these technology choices
 
@@ -136,12 +147,14 @@ make lint-web       # eslint
 - **Chunking is regex-heuristic, not ML-based structure detection.** It handles common contract heading styles (`8.2 Termination`, `ARTICLE VIII - TERMINATION`) but will miss unusual formatting. Documented as a known limitation rather than overclaiming a general-purpose document parser.
 - **DOCX has no real page numbers** (Word doesn't store fixed page boundaries in the XML without rendering), so DOCX chunks have `page: null`. PDF and the future PDF-viewer-based citation UI (Phase 3) rely on real page numbers, which PDF provides natively.
 - The mock embedding provider (hashed bag-of-words) is good enough to exercise retrieval end-to-end in demo mode but is **not semantically meaningful** — it will not understand synonyms or paraphrase, unlike a real embedding model.
+- **The mock reranker is lexical (exact token overlap), not semantic.** In demo mode this means a query can occasionally rank a short heading chunk (e.g. "8.2 Termination") above the fuller clause below it if the heading happens to share more literal words with the query — a real cross-encoder reranker (Cohere) resolves this correctly. Documented rather than hidden because it's a real, observable behavior in demo mode, not a bug in the pipeline logic.
+- **`POST /api/search` returns evidence only, not a generated answer.** `answer_query()` (full RAG: retrieval + generation + citation validation + abstention) exists and is tested, but isn't wired to an HTTP endpoint yet — it's built as the reusable building block Phase 4's LangGraph agent will call as its `retrieve` → `reason` → `validate_citations` nodes, rather than shipping a throwaway `/api/chat` endpoint now and rewriting it in Phase 4.
 
 ## Roadmap
 
 - [x] Phase 1 — Monorepo, auth, basic UI, Docker
 - [x] Phase 2 — Document upload, storage, processing pipeline, chunking, embeddings, pgvector indexing
-- [ ] Phase 3 — Hybrid retrieval, reranking, citations, RAG
+- [x] Phase 3 — Hybrid retrieval, reranking, citations, RAG
 - [ ] Phase 4 — LangGraph agent, tools, guardrails, abstention
 - [ ] Phase 5 — Risk analysis, document comparison
 - [ ] Phase 6 — Observability (Langfuse), evaluation framework, regression testing

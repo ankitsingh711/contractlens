@@ -1,6 +1,6 @@
 # RAG Architecture
 
-> Status: chunking, embeddings, and storage are implemented (Phase 2 — see `app/services/parsing/`, `app/services/embeddings/`). Retrieval (hybrid search, fusion, reranking) is planned for Phase 3. This document records the design and rationale up front so each phase implements against a decision, not a blank page.
+> Status: implemented through hybrid retrieval, reranking, citation grounding, and abstention (Phase 2 + 3 — see `app/retrieval/`, `app/services/reranking/`, `app/services/llm/`, `app/services/citations.py`, `app/services/rag_service.py`). Not yet wired to an HTTP chat endpoint or a LangGraph state machine — that's Phase 4, which reuses `rag_service.answer_query()` as its building block rather than replacing it.
 
 ## Why PostgreSQL + pgvector instead of a dedicated vector database
 
@@ -38,10 +38,20 @@ The Phase 2 migration creates both indexes hybrid search needs, even though noth
 
 The embedding provider is already abstracted (`app/services/embeddings/`): `MockEmbeddingProvider` (deterministic hashed bag-of-words — see `docs/agent.md`-adjacent trade-off notes in the README) for demo mode, `OpenAIEmbeddingProvider` for real use, selected by `EMBEDDING_PROVIDER`. Phase 3 writes the retrieval logic that queries these two indexes and fuses their results — no further schema changes should be needed.
 
-## Planned pipeline
+## Implemented pipeline
 
 ```
-Query → Understanding → Expansion → [Vector Search + Keyword Search] → Fusion → Reranking → Top-K → Evidence Filtering → LLM
+Query → embed → [Vector Search (pgvector HNSW) + Keyword Search (tsvector/GIN)] → RRF Fusion → Reranking → Top-K → Evidence-score gate → LLM → Citation Validation → Answer
 ```
 
-Each stage will be implemented and tested independently in Phase 3, with retrieval-specific tests (recall/precision against the evaluation dataset in `evaluation/`) rather than only end-to-end tests.
+`app/retrieval/pipeline.py` (`hybrid_search()`) implements query embedding through reranking and returns scored, ranked chunks — each stage (`vector_search.py`, `keyword_search.py`, `fusion.py`) is independently unit/integration tested rather than only tested end-to-end (see `tests/test_fusion.py`, `tests/test_retrieval.py`). `app/services/rag_service.py` (`answer_query()`) wraps that with the evidence-score gate, generation, and citation validation.
+
+**Not yet implemented**: query understanding/intent classification and query expansion (rewriting/expanding the user's query before search) — the current pipeline embeds and searches the raw query text. These are natural Phase 4 additions once the agent has a `classify_query` node that can inform how the query is expanded.
+
+### Why the evidence-score gate runs before generation, not after
+
+`answer_query()` checks the top reranked chunk's score against `EVIDENCE_THRESHOLD` (default `0.15`) *before* ever calling the LLM. This is a deliberate ordering: it means "insufficient evidence" is answered without spending a model call at all (cheaper, faster, and removes any chance of the model rationalizing an answer from weak evidence) — the LLM is only invoked once retrieval has already established there's something worth answering from. A second check happens after generation too: if the model's answer ends up with zero valid citations (see citation validation below), the result is treated as an abstention regardless of how confident the generated text reads.
+
+### Why citation validation happens after generation, not as a prompt instruction alone
+
+The prompt (`prompts/qa/v1.txt`) instructs the model to only cite provided evidence, but a prompt instruction is not a guarantee — a model can still hallucinate a citation number that was never given. `validate_citations()` (`app/services/citations.py`) re-checks every `[n]` marker in the generated text against the actual list of retrieved chunks and silently strips any marker that doesn't resolve to one, before the answer is returned. This is what makes the product's citation guarantee ("no citation that wasn't retrieved from the database") actually enforced in code, not just requested in a prompt.
