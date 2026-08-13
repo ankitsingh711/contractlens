@@ -1,22 +1,44 @@
 "use client";
 
 import { FileText, ShieldAlert, MessagesSquare, Gauge } from "lucide-react";
+import Link from "next/link";
 
+import { RunStatusBadge } from "@/components/agent-runs/run-status-badge";
 import { DocumentStatusBadge } from "@/components/documents/status-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAgentRuns } from "@/hooks/use-agent-runs";
 import { useDocuments } from "@/hooks/use-documents";
 
 export default function DashboardPage() {
-  const { data: documents, isLoading } = useDocuments();
+  const { data: documents, isLoading: documentsLoading } = useDocuments();
+  const { data: agentRuns, isLoading: agentRunsLoading } = useAgentRuns();
   const recentDocuments = documents?.slice(0, 5) ?? [];
+  const recentRuns = agentRuns?.slice(0, 5) ?? [];
+
+  const avgLatency =
+    agentRuns && agentRuns.length > 0
+      ? agentRuns.reduce((sum, r) => sum + (r.latency_ms ?? 0), 0) / agentRuns.length / 1000
+      : null;
 
   const statCards = [
-    { label: "Documents", icon: FileText, value: isLoading ? "—" : String(documents?.length ?? 0) },
+    {
+      label: "Documents",
+      icon: FileText,
+      value: documentsLoading ? "—" : String(documents?.length ?? 0),
+    },
     { label: "High Risk Contracts", icon: ShieldAlert, value: "0" },
-    { label: "AI Questions", icon: MessagesSquare, value: "0" },
-    { label: "Avg Latency", icon: Gauge, value: "—" },
+    {
+      label: "AI Questions",
+      icon: MessagesSquare,
+      value: agentRunsLoading ? "—" : String(agentRuns?.length ?? 0),
+    },
+    {
+      label: "Avg Latency",
+      icon: Gauge,
+      value: avgLatency !== null ? `${avgLatency.toFixed(1)}s` : "—",
+    },
   ];
 
   return (
@@ -50,7 +72,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium">Recent Documents</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {documentsLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-8 w-full" />
                 <Skeleton className="h-8 w-full" />
@@ -81,11 +103,32 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium">Recent Agent Runs</CardTitle>
           </CardHeader>
           <CardContent>
-            <EmptyState
-              icon={MessagesSquare}
-              title="No agent runs yet"
-              description="Ask a question in the AI Assistant to see agent execution traces here."
-            />
+            {agentRunsLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : recentRuns.length > 0 ? (
+              <ul className="space-y-3">
+                {recentRuns.map((run) => (
+                  <li key={run.id} className="flex items-center justify-between gap-3 text-sm">
+                    <Link
+                      href={`/agent-runs/${run.id}`}
+                      className="min-w-0 flex-1 truncate hover:underline"
+                    >
+                      {run.query}
+                    </Link>
+                    <RunStatusBadge status={run.status} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState
+                icon={MessagesSquare}
+                title="No agent runs yet"
+                description="Ask a question in the AI Assistant to see agent execution traces here."
+              />
+            )}
           </CardContent>
         </Card>
       </div>

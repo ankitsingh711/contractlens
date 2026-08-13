@@ -1,7 +1,6 @@
 "use client";
 
 import { History, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +9,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useConversation, useConversations } from "@/hooks/use-conversations";
+import { useConversations } from "@/hooks/use-conversations";
+import { apiFetch } from "@/lib/api-client";
 import type { ConversationDetail } from "@/types/chat";
 
 export function ConversationHistory({
@@ -21,15 +21,11 @@ export function ConversationHistory({
   onNew: () => void;
 }) {
   const { data: conversations } = useConversations();
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const { data: pendingConversation } = useConversation(pendingId);
 
-  useEffect(() => {
-    if (pendingConversation) {
-      onSelect(pendingConversation);
-      setPendingId(null);
-    }
-  }, [pendingConversation, onSelect]);
+  const selectConversation = async (id: string) => {
+    const conversation = await apiFetch<ConversationDetail>(`/conversations/${id}`);
+    onSelect(conversation);
+  };
 
   return (
     <div className="flex items-center gap-1.5">
@@ -47,7 +43,7 @@ export function ConversationHistory({
             <p className="px-2 py-1.5 text-xs text-muted-foreground">No conversations yet.</p>
           )}
           {conversations?.map((c) => (
-            <DropdownMenuItem key={c.id} onClick={() => setPendingId(c.id)}>
+            <DropdownMenuItem key={c.id} onClick={() => selectConversation(c.id)}>
               <span className="truncate">{c.title || "Untitled conversation"}</span>
             </DropdownMenuItem>
           ))}
