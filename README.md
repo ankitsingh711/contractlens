@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 4 (LangGraph agent, tools, guardrails, abstention) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 5 (risk analysis, document comparison) complete.**
 
 ## Why this project exists
 
@@ -84,7 +84,17 @@ Full RAG and agent architecture diagrams land in `docs/rag.md` and `docs/agent.m
 - **Frontend**: a real AI Assistant page — streaming responses with a live step indicator, inline citation markers, source list per answer, document scoping, conversation history, regenerate, copy, clear. A real Agent Runs page — run list plus a detail view with expandable steps (input/output/latency per node), matching the spec's trace UI.
 - **Tests**: 44/44 backend tests passing — added agent graph tests (grounded answer, abstention, intent classification, tool-call recording), tool tests (calculate safety against code-injection attempts, unknown-tool/invalid-input error handling), and chat API tests (SSE event sequence, conversation persistence, agent-run creation, org-scoping).
 
-Everything else described below (risk analysis, document comparison, evaluations, observability) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
+## What's implemented so far (Phase 5)
+
+- **Risk analysis** (`app/services/risk_analysis_service.py`): for each of 12 fixed clause categories (termination, payment terms, renewal, liability, indemnification, confidentiality, governing law, dispute resolution, data protection, audit rights, penalties, SLA obligations), retrieves document-scoped evidence via the Phase 3 hybrid search, generates a one/two-sentence summary through the LLM abstraction, and runs it through the same `validate_citations()` guardrail the chat agent uses. A category with no evidence above `EVIDENCE_THRESHOLD`, or whose generated summary ends up with zero valid citations, produces **no finding at all** — never a guessed one. Severity (high/medium/low) is a keyword heuristic over the retrieved evidence text (documented as a simplification, not a learned risk model — see `docs/analysis.md`). An overall 0–100 risk score rolls up the found severities.
+- **Document comparison** (`app/services/comparison_service.py`): compares two documents across the same 12 categories by retrieving the top matching chunk for each category *independently per document* (semantic search, not exact section-number matching, since two contracts number sections differently) and showing both side by side. Deliberately **no LLM summarization** in the comparison itself — the displayed text is literally the retrieved evidence, so there's no risk of the comparison inventing a difference that isn't in the source text.
+- **API**: `POST /api/documents/{id}/analyze` (background job, same status-polling pattern as document processing), `GET /api/documents/{id}/analysis`, `POST /api/comparisons`.
+- **Frontend**: the real Analysis page — a Risk Analysis tab (document picker, risk-score gauge, findings grouped by severity with expandable citations) and a Compare Documents tab (two-document picker, side-by-side comparison table).
+- **Tests**: 52/52 backend tests passing — added risk analysis tests (evidence-backed findings only, unlimited-liability correctly flagged high severity, no fabricated findings for categories absent from the source text, org-scoping) and comparison tests (both sides populated with citations, rejects comparing a document to itself, org-scoping).
+
+"Unusual clauses" (listed in the product spec) is **not implemented** — flagging a clause as unusual requires outlier detection across a corpus (this clause's embedding is far from typical clauses of its kind), a different technique from the fixed-category keyword search used for the other 12 categories, and is a natural but separate future addition.
+
+Everything else described below (evaluations, observability) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
 
 ## Why these technology choices
 
@@ -161,6 +171,9 @@ make lint-web       # eslint
 - **Tool selection is heuristic, not LLM function-calling.** `plan()` decides which tools to call via keyword/regex on the query, not by asking the model — the mock LLM has no reasoning to select tools with, and `OpenAILLMProvider` doesn't implement function-calling yet. Confined to one function (`app/agents/nodes.py::plan`), so swapping in a real planner later doesn't touch the rest of the graph.
 - **`validate_claims` is a heuristic faithfulness check** (does every sentence carry a citation marker?), not a semantic entailment check — it records a warning in the agent trace rather than blocking the response. The hard citation gate is `validate_citations`, which is mechanical and enforced.
 - **SSE streaming is step-level, not token-level.** The client sees "Searching documents… Generating answer…" as each graph node completes, but the `reason` step's own LLM call is not streamed token-by-token — `LLMProvider.complete()` is currently a single non-streaming call.
+- **Risk severity is a keyword heuristic, not a learned risk model.** `classify_severity()` scans retrieved evidence text for escalating/mitigating keywords per category (e.g. "unlimited"/"uncapped" → high liability risk, "capped at" → low). It works well on clearly-worded clauses (verified by test: unlimited liability language is correctly flagged high) but won't catch risk expressed in unusual phrasing a keyword list doesn't anticipate.
+- **On very small/sparse documents, risk analysis can surface weak matches for categories the document doesn't actually address.** With only a handful of chunks in a short document and `EVIDENCE_THRESHOLD=0.15`, categories with no real content can still clear the bar via loose lexical overlap (observed directly on a 5-chunk demo NDA: "payment terms" and "SLA obligations" both surfaced low-confidence findings pointing at unrelated clauses). Every such finding still carries a real citation — the "never fabricate" guarantee holds — but the confidence score is genuinely low (published in the finding), and this is expected to improve significantly on real, multi-page contracts where categories that aren't addressed simply return no chunks above threshold.
+- **Comparison shows raw retrieved text, not a normalized value.** The spec's example table shows compact values ("30 days" vs "7 days"); the implementation shows the full retrieved clause instead, by design — normalizing "30 days written notice" down to "30 days" is exactly the kind of lossy summarization step that risks silently dropping a qualifier, and showing the source text keeps the comparison as trustworthy as the retrieval underneath it.
 
 ## Roadmap
 
@@ -168,7 +181,7 @@ make lint-web       # eslint
 - [x] Phase 2 — Document upload, storage, processing pipeline, chunking, embeddings, pgvector indexing
 - [x] Phase 3 — Hybrid retrieval, reranking, citations, RAG
 - [x] Phase 4 — LangGraph agent, tools, guardrails, abstention
-- [ ] Phase 5 — Risk analysis, document comparison
+- [x] Phase 5 — Risk analysis, document comparison
 - [ ] Phase 6 — Observability (Langfuse), evaluation framework, regression testing
 - [ ] Phase 7 — Security hardening, rate limiting, audit logs
 - [ ] Phase 8 — Production Docker, CI/CD, Terraform/AWS
@@ -180,5 +193,6 @@ make lint-web       # eslint
 - [`docs/architecture.md`](docs/architecture.md)
 - [`docs/rag.md`](docs/rag.md)
 - [`docs/agent.md`](docs/agent.md)
+- [`docs/analysis.md`](docs/analysis.md)
 - [`docs/evaluation.md`](docs/evaluation.md)
 - [`docs/security.md`](docs/security.md)

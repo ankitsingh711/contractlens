@@ -7,6 +7,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.document import DocumentListResponse, DocumentResponse
+from app.schemas.risk_analysis import RiskAnalysisResponse
 from app.services.document_service import (
     create_document,
     delete_document,
@@ -14,6 +15,7 @@ from app.services.document_service import (
     list_documents,
     process_document,
 )
+from app.services.risk_analysis_service import analyze_document, get_latest_analysis, start_analysis
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -63,3 +65,27 @@ async def delete_document_by_id(
     db: AsyncSession = Depends(get_db),
 ):
     await delete_document(db, document_id, current_user.organization_id)
+
+
+@router.post("/{document_id}/analyze", response_model=RiskAnalysisResponse)
+async def analyze_document_by_id(
+    document_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Confirms the document exists, belongs to this org, and is fully
+    # indexed before queuing analysis against it.
+    document = await get_document(db, document_id, current_user.organization_id)
+    analysis = await start_analysis(db, document.id, current_user.organization_id)
+    background_tasks.add_task(analyze_document, document.id, current_user.organization_id)
+    return analysis
+
+
+@router.get("/{document_id}/analysis", response_model=RiskAnalysisResponse)
+async def get_document_analysis(
+    document_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await get_latest_analysis(db, document_id, current_user.organization_id)
