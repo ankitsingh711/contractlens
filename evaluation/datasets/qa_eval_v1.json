@@ -398,7 +398,7 @@
       "id": "abstain_001",
       "document_filename": "master_services_agreement.txt",
       "category": "abstention",
-      "question": "What is the maximum penalty for late delivery of spacecraft parts under this agreement?",
+      "question": "What is the recommended dosage of ibuprofen described in this agreement?",
       "expected_answer": null,
       "expected_sources": []
     },
@@ -406,7 +406,7 @@
       "id": "abstain_002",
       "document_filename": "non_disclosure_agreement.txt",
       "category": "abstention",
-      "question": "What cryptocurrency payment terms are specified in this NDA?",
+      "question": "What migratory pattern of the arctic tern is described in this NDA?",
       "expected_answer": null,
       "expected_sources": []
     },

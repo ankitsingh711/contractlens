@@ -79,6 +79,9 @@ async def _run_single_case(
             answer_relevance=0.0,
             hallucinated=False,
             latency_ms=0.0,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
         )
 
     agent_run, _conversation = await run_agent(
