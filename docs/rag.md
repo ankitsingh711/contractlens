@@ -1,6 +1,6 @@
 # RAG Architecture
 
-> Status: implemented through hybrid retrieval, reranking, citation grounding, and abstention (Phase 2 + 3 — see `app/retrieval/`, `app/services/reranking/`, `app/services/llm/`, `app/services/citations.py`, `app/services/rag_service.py`). Not yet wired to an HTTP chat endpoint or a LangGraph state machine — that's Phase 4, which reuses `rag_service.answer_query()` as its building block rather than replacing it.
+> Status: implemented (Phase 2 + 3 for retrieval/citations/abstention — see `app/retrieval/`, `app/services/reranking/`, `app/services/llm/`, `app/services/citations.py`; Phase 4 wires this into the LangGraph agent and `POST /api/chat`, see `docs/agent.md`). `app/services/rag_service.py::answer_query()` (the original non-agent RAG function from Phase 3) still exists and is tested, but the live `/api/chat` path goes through the agent graph's `reason`/`validate_citations` nodes, which call the same underlying pieces (`hybrid_search`, `build_evidence_block`, `validate_citations`) directly rather than through `answer_query()`.
 
 ## Why PostgreSQL + pgvector instead of a dedicated vector database
 

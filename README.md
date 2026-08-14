@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 3 (hybrid retrieval, reranking, citations, RAG) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 4 (LangGraph agent, tools, guardrails, abstention) complete.**
 
 ## Why this project exists
 
@@ -75,7 +75,16 @@ Full RAG and agent architecture diagrams land in `docs/rag.md` and `docs/agent.m
 - **API**: `POST /api/search` — hybrid search scoped to the caller's organization (and optionally specific `document_ids`), returning ranked evidence chunks with per-stage scores (vector, keyword, fused, reranked).
 - **Tests**: 30/30 backend tests passing — added citation validation unit tests, RRF fusion unit tests, retrieval integration tests (relevance, org-scoping, document filtering) run against the real pgvector/full-text indexes, RAG answer tests (grounded answer with citations, abstention on no evidence, abstention for an empty organization), and prompt-injection tests.
 
-Everything else described below (the LangGraph agent, risk analysis, evaluations) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
+## What's implemented so far (Phase 4)
+
+- **LangGraph agent** (`app/agents/graph.py`): nine explicit nodes — `classify_query → plan → retrieve → evaluate_evidence → (reason | abstain) → validate_claims → validate_citations → final_response` — with a real conditional edge on evidence sufficiency, not a linear chain. Typed `AgentState` threaded through every node. See `docs/agent.md` for the full diagram and rationale.
+- **Agent tools** (`app/agents/tools/`): `search_documents`, `get_clause`, `get_document_metadata`, `calculate` (AST-parsed, never `eval`), `retrieve_source`, `compare_clauses` — each with typed Pydantic input/output, a 10s timeout, structured logging, and org-scoped queries so a tool call can never read another organization's data.
+- **Persistence + tracing**: every run creates an `AgentRun` + one `AgentStep` per graph node, plus a `Conversation`/`Message` pair — powering both the AI Assistant's chat history and the Agent Runs trace viewer from the same underlying data.
+- **API**: `POST /api/chat` (SSE — streams `run_started` → `step` × N → `done`/`error` as the graph executes), `GET/{id} /api/conversations`, `GET/{id} /api/agent-runs`.
+- **Frontend**: a real AI Assistant page — streaming responses with a live step indicator, inline citation markers, source list per answer, document scoping, conversation history, regenerate, copy, clear. A real Agent Runs page — run list plus a detail view with expandable steps (input/output/latency per node), matching the spec's trace UI.
+- **Tests**: 44/44 backend tests passing — added agent graph tests (grounded answer, abstention, intent classification, tool-call recording), tool tests (calculate safety against code-injection attempts, unknown-tool/invalid-input error handling), and chat API tests (SSE event sequence, conversation persistence, agent-run creation, org-scoping).
+
+Everything else described below (risk analysis, document comparison, evaluations, observability) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
 
 ## Why these technology choices
 
@@ -148,14 +157,17 @@ make lint-web       # eslint
 - **DOCX has no real page numbers** (Word doesn't store fixed page boundaries in the XML without rendering), so DOCX chunks have `page: null`. PDF and the future PDF-viewer-based citation UI (Phase 3) rely on real page numbers, which PDF provides natively.
 - The mock embedding provider (hashed bag-of-words) is good enough to exercise retrieval end-to-end in demo mode but is **not semantically meaningful** — it will not understand synonyms or paraphrase, unlike a real embedding model.
 - **The mock reranker is lexical (exact token overlap), not semantic.** In demo mode this means a query can occasionally rank a short heading chunk (e.g. "8.2 Termination") above the fuller clause below it if the heading happens to share more literal words with the query — a real cross-encoder reranker (Cohere) resolves this correctly. Documented rather than hidden because it's a real, observable behavior in demo mode, not a bug in the pipeline logic.
-- **`POST /api/search` returns evidence only, not a generated answer.** `answer_query()` (full RAG: retrieval + generation + citation validation + abstention) exists and is tested, but isn't wired to an HTTP endpoint yet — it's built as the reusable building block Phase 4's LangGraph agent will call as its `retrieve` → `reason` → `validate_citations` nodes, rather than shipping a throwaway `/api/chat` endpoint now and rewriting it in Phase 4.
+- **`POST /api/search` returns evidence only, not a generated answer** — `POST /api/chat` (the LangGraph agent) is the endpoint that generates grounded answers; `/api/search` remains a thin retrieval-only endpoint for cases that just need ranked evidence.
+- **Tool selection is heuristic, not LLM function-calling.** `plan()` decides which tools to call via keyword/regex on the query, not by asking the model — the mock LLM has no reasoning to select tools with, and `OpenAILLMProvider` doesn't implement function-calling yet. Confined to one function (`app/agents/nodes.py::plan`), so swapping in a real planner later doesn't touch the rest of the graph.
+- **`validate_claims` is a heuristic faithfulness check** (does every sentence carry a citation marker?), not a semantic entailment check — it records a warning in the agent trace rather than blocking the response. The hard citation gate is `validate_citations`, which is mechanical and enforced.
+- **SSE streaming is step-level, not token-level.** The client sees "Searching documents… Generating answer…" as each graph node completes, but the `reason` step's own LLM call is not streamed token-by-token — `LLMProvider.complete()` is currently a single non-streaming call.
 
 ## Roadmap
 
 - [x] Phase 1 — Monorepo, auth, basic UI, Docker
 - [x] Phase 2 — Document upload, storage, processing pipeline, chunking, embeddings, pgvector indexing
 - [x] Phase 3 — Hybrid retrieval, reranking, citations, RAG
-- [ ] Phase 4 — LangGraph agent, tools, guardrails, abstention
+- [x] Phase 4 — LangGraph agent, tools, guardrails, abstention
 - [ ] Phase 5 — Risk analysis, document comparison
 - [ ] Phase 6 — Observability (Langfuse), evaluation framework, regression testing
 - [ ] Phase 7 — Security hardening, rate limiting, audit logs
