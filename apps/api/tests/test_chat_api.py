@@ -147,6 +147,10 @@ async def test_chat_creates_agent_run_with_steps(client: AsyncClient):
     assert step_indices == sorted(step_indices)
     assert payload["steps"][0]["step_index"] == 0
     assert payload["steps"][0]["step_name"] == "classify_query"
+    assert payload["model"] == "mock-llm"
+    assert payload["input_tokens"] > 0
+    assert payload["output_tokens"] > 0
+    assert payload["estimated_cost_usd"] == 0.0  # mock provider is free
 
     list_response = await client.get("/api/agent-runs", headers=headers)
     assert len(list_response.json()["agent_runs"]) == 1

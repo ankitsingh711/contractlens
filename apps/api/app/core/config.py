@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     # Docker Compose api service overrides this to an absolute path since
     # its working directory differs from local dev).
     PROMPTS_DIR: str = "../../prompts"
+    EVALUATION_DATASET_DIR: str = "../../evaluation/datasets"
+    REGRESSION_THRESHOLD: float = 0.03
 
     # Retrieval
     RETRIEVAL_CANDIDATE_POOL_SIZE: int = 20

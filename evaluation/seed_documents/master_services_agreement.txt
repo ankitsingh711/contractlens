@@ -1,0 +1,110 @@
+MASTER SERVICES AGREEMENT
+
+This Master Services Agreement ("Agreement") is entered into between Acme Corp, a Delaware
+corporation ("Client"), and Widget LLC, a California limited liability company ("Provider").
+
+1 Definitions
+
+"Confidential Information" means any non-public business, technical, or financial information
+disclosed by either party, whether disclosed orally or in writing, that is designated as
+confidential or that reasonably should be understood to be confidential.
+
+"Services" means the professional services described in each Statement of Work executed under
+this Agreement.
+
+2 Scope of Services
+
+Provider shall perform the Services described in each Statement of Work in a professional and
+workmanlike manner consistent with generally accepted industry standards.
+
+3 Payment Terms
+
+Client shall pay all undisputed invoices within thirty (30) days of the invoice date. Invoices
+not paid within thirty (30) days shall accrue interest at a rate of 1.5% per month on the
+outstanding balance. Provider shall invoice Client monthly in arrears for Services performed.
+
+4 Renewal
+
+This Agreement shall automatically renew for successive one (1) year terms unless either party
+provides written notice of non-renewal at least sixty (60) days prior to the end of the then
+current term.
+
+5 Confidentiality
+
+Each party shall maintain the confidentiality of the other party's Confidential Information and
+shall not disclose such information to any third party without the prior written consent of the
+disclosing party, except as required by law. This obligation shall survive for three (3) years
+following termination of this Agreement.
+
+6 Data Protection
+
+Provider shall implement and maintain commercially reasonable administrative, technical, and
+physical safeguards designed to protect the security, confidentiality, and integrity of Client
+data, including encryption of data at rest and in transit. Provider shall notify Client within
+seventy-two (72) hours of becoming aware of any security breach affecting Client data.
+
+7 Audit Rights
+
+Client may, upon providing Provider with reasonable advance written notice of no less than
+fifteen (15) business days, audit Provider's records and facilities relating to the Services no
+more than once per calendar year during Provider's normal business hours.
+
+8.1 Term
+
+This Agreement shall commence on the Effective Date and shall continue until terminated in
+accordance with Section 8.2.
+
+8.2 Termination
+
+Either party may terminate this Agreement for convenience upon ninety (90) days prior written
+notice to the other party. Either party may terminate this Agreement immediately upon written
+notice if the other party materially breaches this Agreement and fails to cure such breach
+within thirty (30) days after receiving written notice describing the breach in reasonable
+detail.
+
+8.3 Effect of Termination
+
+Upon termination or expiration of this Agreement, Client shall pay Provider for all Services
+performed through the effective date of termination, and each party shall promptly return or
+destroy the other party's Confidential Information.
+
+9 Limitation of Liability
+
+Except for breaches of Section 5 (Confidentiality) or a party's indemnification obligations
+under Section 10, neither party's aggregate liability arising out of or related to this
+Agreement shall exceed the total fees paid or payable by Client to Provider in the twelve (12)
+months preceding the event giving rise to the claim. In no event shall either party be liable
+for any indirect, incidental, special, or consequential damages.
+
+10 Indemnification
+
+Each party shall indemnify, defend, and hold harmless the other party from and against any
+third-party claims, damages, and reasonable expenses arising from the indemnifying party's
+gross negligence, willful misconduct, or breach of this Agreement, provided that the
+indemnified party promptly notifies the indemnifying party of any such claim.
+
+11 Governing Law
+
+This Agreement shall be governed by and construed in accordance with the laws of the State of
+Delaware, without regard to its conflict of laws principles.
+
+12 Dispute Resolution
+
+The parties shall attempt in good faith to resolve any dispute arising out of this Agreement
+through negotiation between senior executives. If such dispute is not resolved within thirty
+(30) days, the dispute shall be submitted to binding arbitration administered by the American
+Arbitration Association in Wilmington, Delaware.
+
+13 Service Level Obligations
+
+Provider shall use commercially reasonable efforts to ensure the Services are available 99.5%
+of the time, measured monthly, excluding scheduled maintenance windows. If Provider fails to
+meet this availability target in any calendar month, Client shall be entitled to a service
+credit equal to 5% of that month's fees for each full percentage point below the target,
+subject to a maximum credit of 25% of the monthly fees.
+
+14 Penalties
+
+In addition to any service credits owed under Section 13, repeated failure to meet the service
+level in three or more consecutive months shall entitle Client to terminate this Agreement for
+cause without the cure period described in Section 8.2.

@@ -15,6 +15,8 @@ from app.models.agent_run import AgentRun, AgentRunStatus
 from app.models.agent_step import AgentStep
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
+from app.observability import AgentTrace, TraceStep, get_observability_client
+from app.services.cost import estimate_cost
 
 logger = get_logger("agent_service")
 
@@ -32,6 +34,9 @@ def _initial_state(query: str, organization_id: uuid.UUID, document_ids: list[st
         "confidence": 0.0,
         "tool_calls": [],
         "errors": [],
+        "model": "",
+        "input_tokens": 0,
+        "output_tokens": 0,
     }
 
 
@@ -110,6 +115,7 @@ async def stream_agent(
     step_index = 0
     total_start = time.perf_counter()
     step_start = total_start
+    trace_steps: list[TraceStep] = []
 
     try:
         async for update in graph.astream(state, stream_mode="updates"):
@@ -125,6 +131,14 @@ async def stream_agent(
                     latency_ms=latency_ms,
                 )
                 db.add(step)
+                trace_steps.append(
+                    TraceStep(
+                        name=node_name,
+                        input=_state_snapshot(state),
+                        output=partial,
+                        latency_ms=latency_ms,
+                    )
+                )
                 yield {
                     "type": "step",
                     "step_index": step_index,
@@ -151,6 +165,15 @@ async def stream_agent(
     agent_run.evidence_score = state["evidence_score"]
     agent_run.confidence = state["confidence"]
     agent_run.latency_ms = (time.perf_counter() - total_start) * 1000
+    agent_run.model = state["model"] or None
+    agent_run.prompt_version = "v1" if state["model"] else None
+    agent_run.input_tokens = state["input_tokens"]
+    agent_run.output_tokens = state["output_tokens"]
+    agent_run.estimated_cost_usd = (
+        estimate_cost(state["model"], state["input_tokens"], state["output_tokens"])
+        if state["model"]
+        else 0.0
+    )
 
     db.add(
         Message(
@@ -161,6 +184,26 @@ async def stream_agent(
         )
     )
     await db.commit()
+
+    get_observability_client().record_agent_trace(
+        AgentTrace(
+            trace_id=str(agent_run.id),
+            organization_id=str(organization_id),
+            query=query,
+            intent=state["intent"],
+            answer=state["answer"],
+            model=agent_run.model,
+            prompt_version=agent_run.prompt_version,
+            evidence_score=state["evidence_score"],
+            confidence=state["confidence"],
+            input_tokens=state["input_tokens"],
+            output_tokens=state["output_tokens"],
+            estimated_cost_usd=agent_run.estimated_cost_usd or 0.0,
+            latency_ms=agent_run.latency_ms or 0.0,
+            steps=trace_steps,
+            errors=state["errors"],
+        )
+    )
 
     yield {
         "type": "done",

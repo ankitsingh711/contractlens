@@ -43,11 +43,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://contractlens:contractlens@postgres:5432/contractlens
       REDIS_URL: redis://redis:6379/0
       PROMPTS_DIR: /app/prompts
+      EVALUATION_DATASET_DIR: /evaluation/datasets
     ports:
       - "8000:8000"
     volumes:
       - ./apps/api:/app
       - ./prompts:/app/prompts:ro
+      - ./evaluation:/evaluation:ro
       - api_storage:/app/storage
     depends_on:
       postgres:

@@ -13,3 +13,6 @@ class AgentState(TypedDict):
     confidence: float
     tool_calls: list[dict[str, Any]]
     errors: list[str]
+    model: str
+    input_tokens: int
+    output_tokens: int

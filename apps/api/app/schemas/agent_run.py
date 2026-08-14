@@ -31,6 +31,7 @@ class AgentRunResponse(BaseModel):
     prompt_version: str | None
     input_tokens: int
     output_tokens: int
+    estimated_cost_usd: float | None
     latency_ms: float | None
     error_message: str | None
     created_at: datetime

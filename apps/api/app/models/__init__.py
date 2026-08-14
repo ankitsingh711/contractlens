@@ -3,6 +3,8 @@ from app.models.agent_step import AgentStep
 from app.models.conversation import Conversation
 from app.models.document import Document, DocumentStatus, DocumentType
 from app.models.document_chunk import ChunkType, DocumentChunk
+from app.models.evaluation_result import EvaluationResult
+from app.models.evaluation_run import EvaluationRun, EvaluationRunStatus
 from app.models.message import Message, MessageRole
 from app.models.organization import Organization
 from app.models.risk_analysis import RiskAnalysis, RiskAnalysisStatus
@@ -19,6 +21,9 @@ __all__ = [
     "DocumentChunk",
     "DocumentStatus",
     "DocumentType",
+    "EvaluationResult",
+    "EvaluationRun",
+    "EvaluationRunStatus",
     "Message",
     "MessageRole",
     "Organization",

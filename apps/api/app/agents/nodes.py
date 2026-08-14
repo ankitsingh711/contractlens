@@ -137,7 +137,12 @@ async def reason(state: AgentState) -> dict:
 
     llm = get_llm_provider()
     response = await llm.complete([LLMMessage(role="user", content=prompt)])
-    return {"answer": response.text}
+    return {
+        "answer": response.text,
+        "model": response.model,
+        "input_tokens": response.input_tokens,
+        "output_tokens": response.output_tokens,
+    }
 
 
 def abstain(state: AgentState) -> dict:

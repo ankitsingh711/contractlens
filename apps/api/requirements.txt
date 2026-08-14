@@ -21,3 +21,4 @@ aiofiles==24.1.0
 tiktoken==0.8.0
 openai==1.59.7
 langgraph==0.2.62
+langfuse==2.53.9

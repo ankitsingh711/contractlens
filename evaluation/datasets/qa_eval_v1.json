@@ -1,0 +1,422 @@
+{
+  "version": "v1",
+  "description": "Q&A evaluation cases against the synthetic seed contracts in evaluation/seed_documents/. expected_sources are section numbers within the named document; expected_answer is free text used for a lexical answer-relevance/correctness proxy metric (see docs/evaluation.md).",
+  "cases": [
+    {
+      "id": "msa_001",
+      "document_filename": "master_services_agreement.txt",
+      "category": "termination",
+      "question": "How much notice is required to terminate the Master Services Agreement for convenience?",
+      "expected_answer": "Either party may terminate for convenience upon ninety days prior written notice.",
+      "expected_sources": ["8.2"]
+    },
+    {
+      "id": "msa_002",
+      "document_filename": "master_services_agreement.txt",
+      "category": "termination",
+      "question": "How long does a party have to cure a material breach before the other party can terminate immediately?",
+      "expected_answer": "The breaching party has thirty days to cure a material breach after receiving written notice.",
+      "expected_sources": ["8.2"]
+    },
+    {
+      "id": "msa_003",
+      "document_filename": "master_services_agreement.txt",
+      "category": "termination",
+      "question": "What happens to Confidential Information when the Master Services Agreement is terminated?",
+      "expected_answer": "Each party shall promptly return or destroy the other party's Confidential Information upon termination.",
+      "expected_sources": ["8.3"]
+    },
+    {
+      "id": "msa_004",
+      "document_filename": "master_services_agreement.txt",
+      "category": "payment_terms",
+      "question": "How many days does Client have to pay an invoice before interest accrues?",
+      "expected_answer": "Client must pay undisputed invoices within thirty days before interest accrues at 1.5% per month.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "msa_005",
+      "document_filename": "master_services_agreement.txt",
+      "category": "payment_terms",
+      "question": "How is Provider's invoicing frequency described in the Master Services Agreement?",
+      "expected_answer": "Provider shall invoice Client monthly in arrears for Services performed.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "msa_006",
+      "document_filename": "master_services_agreement.txt",
+      "category": "renewal",
+      "question": "Does the Master Services Agreement renew automatically?",
+      "expected_answer": "Yes, it automatically renews for successive one year terms unless either party gives sixty days notice of non-renewal.",
+      "expected_sources": ["4"]
+    },
+    {
+      "id": "msa_007",
+      "document_filename": "master_services_agreement.txt",
+      "category": "liability",
+      "question": "Is there a cap on liability under the Master Services Agreement?",
+      "expected_answer": "Liability is capped at the total fees paid in the twelve months preceding the claim, except for confidentiality breaches and indemnification.",
+      "expected_sources": ["9"]
+    },
+    {
+      "id": "msa_008",
+      "document_filename": "master_services_agreement.txt",
+      "category": "liability",
+      "question": "Are indirect or consequential damages recoverable under the Master Services Agreement?",
+      "expected_answer": "No, neither party is liable for indirect, incidental, special, or consequential damages.",
+      "expected_sources": ["9"]
+    },
+    {
+      "id": "msa_009",
+      "document_filename": "master_services_agreement.txt",
+      "category": "indemnification",
+      "question": "What triggers a party's indemnification obligation in the Master Services Agreement?",
+      "expected_answer": "Each party indemnifies the other for claims arising from gross negligence, willful misconduct, or breach of the agreement.",
+      "expected_sources": ["10"]
+    },
+    {
+      "id": "msa_010",
+      "document_filename": "master_services_agreement.txt",
+      "category": "confidentiality",
+      "question": "How long does the confidentiality obligation survive after the Master Services Agreement ends?",
+      "expected_answer": "The confidentiality obligation survives for three years following termination.",
+      "expected_sources": ["5"]
+    },
+    {
+      "id": "msa_011",
+      "document_filename": "master_services_agreement.txt",
+      "category": "governing_law",
+      "question": "What state's law governs the Master Services Agreement?",
+      "expected_answer": "The agreement is governed by the laws of the State of Delaware.",
+      "expected_sources": ["11"]
+    },
+    {
+      "id": "msa_012",
+      "document_filename": "master_services_agreement.txt",
+      "category": "dispute_resolution",
+      "question": "How are disputes resolved under the Master Services Agreement if negotiation fails?",
+      "expected_answer": "Disputes are submitted to binding arbitration administered by the American Arbitration Association in Wilmington, Delaware.",
+      "expected_sources": ["12"]
+    },
+    {
+      "id": "msa_013",
+      "document_filename": "master_services_agreement.txt",
+      "category": "data_protection",
+      "question": "How quickly must Provider notify Client of a security breach affecting Client data?",
+      "expected_answer": "Provider must notify Client within seventy-two hours of becoming aware of a security breach.",
+      "expected_sources": ["6"]
+    },
+    {
+      "id": "msa_014",
+      "document_filename": "master_services_agreement.txt",
+      "category": "audit_rights",
+      "question": "How much notice must Client give before auditing Provider under the Master Services Agreement?",
+      "expected_answer": "Client must provide at least fifteen business days advance written notice, and may audit no more than once per year.",
+      "expected_sources": ["7"]
+    },
+    {
+      "id": "msa_015",
+      "document_filename": "master_services_agreement.txt",
+      "category": "sla",
+      "question": "What service availability target must Provider meet under the Master Services Agreement?",
+      "expected_answer": "Provider must use commercially reasonable efforts to ensure 99.5% availability measured monthly.",
+      "expected_sources": ["13"]
+    },
+    {
+      "id": "msa_016",
+      "document_filename": "master_services_agreement.txt",
+      "category": "penalties",
+      "question": "What service credit is Client entitled to if Provider misses the availability target?",
+      "expected_answer": "Client gets a service credit of 5% of that month's fees per full percentage point below target, capped at 25%.",
+      "expected_sources": ["13"]
+    },
+    {
+      "id": "nda_001",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "confidentiality",
+      "question": "What must the Receiving Party do with Confidential Information under the NDA?",
+      "expected_answer": "The Receiving Party must use Confidential Information only to evaluate the business relationship and not disclose it to third parties without consent.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "nda_002",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "confidentiality",
+      "question": "What information is excluded from the definition of Confidential Information in the NDA?",
+      "expected_answer": "Information that is publicly known, already known, independently developed, or rightfully received from a third party is excluded.",
+      "expected_sources": ["2"]
+    },
+    {
+      "id": "nda_003",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "termination",
+      "question": "How much notice is needed to terminate the NDA?",
+      "expected_answer": "Either party may terminate the NDA upon thirty days written notice.",
+      "expected_sources": ["5"]
+    },
+    {
+      "id": "nda_004",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "termination",
+      "question": "What is the term length of the NDA?",
+      "expected_answer": "The NDA remains in effect for two years from the Effective Date, though confidentiality survives for five years.",
+      "expected_sources": ["4"]
+    },
+    {
+      "id": "nda_005",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "governing_law",
+      "question": "What law governs the Non-Disclosure Agreement?",
+      "expected_answer": "The NDA is governed by the laws of the State of New York.",
+      "expected_sources": ["7"]
+    },
+    {
+      "id": "nda_006",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "liability",
+      "question": "Is there a liability cap in the NDA for breach of confidentiality?",
+      "expected_answer": "Liability for breach of confidentiality is capped at one hundred thousand dollars.",
+      "expected_sources": ["9"]
+    },
+    {
+      "id": "nda_007",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "dispute_resolution",
+      "question": "What remedy is available for unauthorized disclosure under the NDA?",
+      "expected_answer": "The Disclosing Party may seek injunctive relief in addition to other remedies at law or equity.",
+      "expected_sources": ["8"]
+    },
+    {
+      "id": "nda_008",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "confidentiality",
+      "question": "Does the NDA grant any license rights to Confidential Information?",
+      "expected_answer": "No, the NDA does not grant any license or rights to Confidential Information beyond what is expressly stated.",
+      "expected_sources": ["6"]
+    },
+    {
+      "id": "dpa_001",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "data_protection",
+      "question": "What security measures must the Processor implement under the DPA?",
+      "expected_answer": "Processor must implement encryption at rest and in transit, regular security testing, and timely restoration of availability.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "dpa_002",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "data_protection",
+      "question": "How quickly must the Processor notify the Controller of a data breach?",
+      "expected_answer": "Processor must notify Controller without undue delay and within forty-eight hours of becoming aware of a breach.",
+      "expected_sources": ["4"]
+    },
+    {
+      "id": "dpa_003",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "data_protection",
+      "question": "Can the Processor engage sub-processors under the DPA?",
+      "expected_answer": "Yes, provided the Processor imposes equivalent data protection obligations and gives thirty days notice before engaging a new sub-processor.",
+      "expected_sources": ["5"]
+    },
+    {
+      "id": "dpa_004",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "audit_rights",
+      "question": "How often can the Controller audit the Processor under the DPA?",
+      "expected_answer": "The Controller may audit no more than once per calendar year with thirty days notice, or more often after a breach.",
+      "expected_sources": ["6"]
+    },
+    {
+      "id": "dpa_005",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "termination",
+      "question": "When can the Controller terminate the DPA immediately?",
+      "expected_answer": "The Controller may terminate immediately if the Processor breaches its security or breach-notification obligations and fails to cure within fifteen days.",
+      "expected_sources": ["10"]
+    },
+    {
+      "id": "dpa_006",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "governing_law",
+      "question": "What law governs the Data Processing Agreement?",
+      "expected_answer": "The DPA is governed by the laws of the State of Delaware.",
+      "expected_sources": ["11"]
+    },
+    {
+      "id": "dpa_007",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "liability",
+      "question": "Does the liability limitation in the DPA apply to a breach of the security measures obligation?",
+      "expected_answer": "No, the limitation of liability does not apply to failures to implement the required security measures or breach notification.",
+      "expected_sources": ["9"]
+    },
+    {
+      "id": "dpa_008",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "data_protection",
+      "question": "What happens to Personal Data when the DPA terminates?",
+      "expected_answer": "Processor shall, at Controller's election, delete or return all Personal Data and delete existing copies.",
+      "expected_sources": ["8"]
+    },
+    {
+      "id": "dpa_009",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "data_protection",
+      "question": "What must the Processor do to help with data subject requests under the DPA?",
+      "expected_answer": "Processor must assist Controller in responding to data subject requests for access, rectification, erasure, and portability.",
+      "expected_sources": ["7"]
+    },
+    {
+      "id": "license_001",
+      "document_filename": "software_license_agreement.txt",
+      "category": "liability",
+      "question": "What is Licensor's total liability cap under the Software License Agreement?",
+      "expected_answer": "Licensor's total liability shall not exceed the fees paid by Licensee in the preceding twelve months.",
+      "expected_sources": ["8"]
+    },
+    {
+      "id": "license_002",
+      "document_filename": "software_license_agreement.txt",
+      "category": "termination",
+      "question": "Can Licensor terminate the Software License Agreement immediately?",
+      "expected_answer": "Yes, Licensor may terminate immediately in its sole discretion if Licensee breaches the restrictions section.",
+      "expected_sources": ["5"]
+    },
+    {
+      "id": "license_003",
+      "document_filename": "software_license_agreement.txt",
+      "category": "termination",
+      "question": "How much notice is needed to terminate the Software License Agreement for any reason?",
+      "expected_answer": "Either party may terminate upon sixty days written notice for any reason.",
+      "expected_sources": ["5"]
+    },
+    {
+      "id": "license_004",
+      "document_filename": "software_license_agreement.txt",
+      "category": "renewal",
+      "question": "Does the Software License Agreement renew automatically?",
+      "expected_answer": "Yes, it automatically renews for successive one year terms unless either party gives forty-five days notice of non-renewal.",
+      "expected_sources": ["4"]
+    },
+    {
+      "id": "license_005",
+      "document_filename": "software_license_agreement.txt",
+      "category": "payment_terms",
+      "question": "What happens if Licensee fails to pay fees for sixty days under the Software License Agreement?",
+      "expected_answer": "Licensor may suspend Licensee's access to the Software if undisputed fees remain unpaid for more than sixty days.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "license_006",
+      "document_filename": "software_license_agreement.txt",
+      "category": "indemnification",
+      "question": "What does Licensor's indemnification obligation cover in the Software License Agreement?",
+      "expected_answer": "Licensor will defend and indemnify Licensee against third-party claims that the Software infringes a valid patent or copyright.",
+      "expected_sources": ["9"]
+    },
+    {
+      "id": "license_007",
+      "document_filename": "software_license_agreement.txt",
+      "category": "governing_law",
+      "question": "What state law governs the Software License Agreement?",
+      "expected_answer": "The agreement is governed by the laws of the State of Massachusetts.",
+      "expected_sources": ["11"]
+    },
+    {
+      "id": "license_008",
+      "document_filename": "software_license_agreement.txt",
+      "category": "dispute_resolution",
+      "question": "Where must disputes under the Software License Agreement be litigated?",
+      "expected_answer": "Disputes must be resolved exclusively in the state or federal courts located in Suffolk County, Massachusetts.",
+      "expected_sources": ["12"]
+    },
+    {
+      "id": "license_009",
+      "document_filename": "software_license_agreement.txt",
+      "category": "data_protection",
+      "question": "Can Licensor access data Licensee inputs into the Software?",
+      "expected_answer": "Licensor shall not access, use, or process such data except as necessary to provide requested support services.",
+      "expected_sources": ["10"]
+    },
+    {
+      "id": "license_010",
+      "document_filename": "software_license_agreement.txt",
+      "category": "unusual_clause",
+      "question": "What restrictions apply to Licensee's use of the Software?",
+      "expected_answer": "Licensee may not sublicense, sell, distribute, reverse engineer, decompile, or remove proprietary notices from the Software.",
+      "expected_sources": ["2"]
+    },
+    {
+      "id": "msa_017",
+      "document_filename": "master_services_agreement.txt",
+      "category": "unusual_clause",
+      "question": "What happens if Provider misses the service level target for three consecutive months?",
+      "expected_answer": "Client is entitled to terminate the Master Services Agreement for cause without the standard cure period.",
+      "expected_sources": ["14"]
+    },
+    {
+      "id": "msa_018",
+      "document_filename": "master_services_agreement.txt",
+      "category": "confidentiality",
+      "question": "What counts as Confidential Information under the Master Services Agreement?",
+      "expected_answer": "Confidential Information is non-public business, technical, or financial information disclosed by either party that is designated confidential or reasonably understood to be confidential.",
+      "expected_sources": ["1"]
+    },
+    {
+      "id": "nda_009",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "confidentiality",
+      "question": "How must the Receiving Party protect Confidential Information under the NDA?",
+      "expected_answer": "The Receiving Party must use the same degree of care it uses for its own confidential information, but no less than reasonable care.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "dpa_010",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "audit_rights",
+      "question": "What must the Processor make available during a Controller audit under the DPA?",
+      "expected_answer": "Processor must make available all information necessary to demonstrate compliance with the DPA.",
+      "expected_sources": ["6"]
+    },
+    {
+      "id": "license_011",
+      "document_filename": "software_license_agreement.txt",
+      "category": "liability",
+      "question": "Is the Software provided with a warranty under the Software License Agreement?",
+      "expected_answer": "No, the Software is provided as is without warranty of any kind except as expressly set forth in the agreement.",
+      "expected_sources": ["7"]
+    },
+    {
+      "id": "msa_019",
+      "document_filename": "master_services_agreement.txt",
+      "category": "payment_terms",
+      "question": "What interest rate applies to overdue invoices under the Master Services Agreement?",
+      "expected_answer": "Overdue invoices accrue interest at a rate of 1.5% per month on the outstanding balance.",
+      "expected_sources": ["3"]
+    },
+    {
+      "id": "abstain_001",
+      "document_filename": "master_services_agreement.txt",
+      "category": "abstention",
+      "question": "What is the maximum penalty for late delivery of spacecraft parts under this agreement?",
+      "expected_answer": null,
+      "expected_sources": []
+    },
+    {
+      "id": "abstain_002",
+      "document_filename": "non_disclosure_agreement.txt",
+      "category": "abstention",
+      "question": "What cryptocurrency payment terms are specified in this NDA?",
+      "expected_answer": null,
+      "expected_sources": []
+    },
+    {
+      "id": "abstain_003",
+      "document_filename": "data_processing_agreement.txt",
+      "category": "abstention",
+      "question": "What is the agreed mascot for the joint marketing campaign?",
+      "expected_answer": null,
+      "expected_sources": []
+    }
+  ]
+}

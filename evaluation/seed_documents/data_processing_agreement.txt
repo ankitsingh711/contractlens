@@ -1,0 +1,78 @@
+DATA PROCESSING AGREEMENT
+
+This Data Processing Agreement ("DPA") supplements the Master Services Agreement between
+Helios Retail Group ("Controller") and Cascade Cloud Services, Inc. ("Processor") and governs
+Processor's processing of personal data on behalf of Controller.
+
+1 Definitions
+
+"Personal Data" means any information relating to an identified or identifiable natural person
+processed by Processor on behalf of Controller in connection with the Services.
+
+"Sub-processor" means any third party engaged by Processor to process Personal Data on behalf
+of Controller.
+
+2 Scope of Processing
+
+Processor shall process Personal Data only on documented instructions from Controller,
+including with regard to transfers of Personal Data to a third country, unless required to do
+so by applicable law.
+
+3 Security Measures
+
+Processor shall implement appropriate technical and organizational measures to ensure a level
+of security appropriate to the risk, including encryption of Personal Data at rest and in
+transit, regular testing of security measures, and the ability to restore availability of
+Personal Data in a timely manner following an incident.
+
+4 Breach Notification
+
+Processor shall notify Controller without undue delay, and in any event within forty-eight (48)
+hours, after becoming aware of a Personal Data breach, and shall provide Controller with
+sufficient information to allow Controller to meet any obligations to report the breach to
+supervisory authorities or affected individuals.
+
+5 Sub-processors
+
+Processor may engage Sub-processors to process Personal Data provided that Processor imposes
+data protection obligations on each Sub-processor no less protective than those set out in this
+DPA and notifies Controller of any intended changes to Sub-processors at least thirty (30) days
+in advance, giving Controller the opportunity to object.
+
+6 Audit Rights
+
+Controller may audit Processor's compliance with this DPA no more than once per calendar year,
+upon at least thirty (30) days written notice, or more frequently if required by a supervisory
+authority or following a Personal Data breach. Processor shall make available to Controller all
+information necessary to demonstrate compliance with this DPA.
+
+7 Data Subject Rights
+
+Processor shall assist Controller, insofar as possible, in responding to requests from data
+subjects seeking to exercise their rights under applicable data protection law, including
+rights of access, rectification, erasure, and data portability.
+
+8 Deletion and Return
+
+Upon termination of the Services, Processor shall, at Controller's election, delete or return
+all Personal Data to Controller and delete existing copies unless applicable law requires
+storage of the Personal Data.
+
+9 Liability
+
+Processor's liability arising out of or related to this DPA shall be subject to the limitation
+of liability set forth in the Master Services Agreement, except that such limitation shall not
+apply to liability arising from Processor's failure to implement the security measures required
+under Section 3 or its failure to comply with Section 4.
+
+10 Termination
+
+Either party may terminate this DPA upon termination of the underlying Master Services
+Agreement. Controller may additionally terminate this DPA immediately upon written notice if
+Processor materially breaches its obligations under Section 3 or Section 4 and fails to cure
+such breach within fifteen (15) days.
+
+11 Governing Law
+
+This DPA shall be governed by the laws of the State of Delaware, consistent with the governing
+law provision of the Master Services Agreement.
