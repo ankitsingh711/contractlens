@@ -1,13 +1,14 @@
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import get_client_ip, get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.document import DocumentListResponse, DocumentResponse
 from app.schemas.risk_analysis import RiskAnalysisResponse
+from app.services.audit_service import log_action
 from app.services.document_service import (
     create_document,
     delete_document,
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -35,6 +37,7 @@ async def upload_document(
         filename=file.filename or "untitled",
         content_type=file.content_type or "application/octet-stream",
         data=data,
+        ip_address=get_client_ip(request),
     )
     background_tasks.add_task(process_document, document.id)
     return document
@@ -61,16 +64,24 @@ async def get_document_by_id(
 @router.delete("/{document_id}", status_code=204)
 async def delete_document_by_id(
     document_id: uuid.UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await delete_document(db, document_id, current_user.organization_id)
+    await delete_document(
+        db,
+        document_id,
+        current_user.organization_id,
+        user_id=current_user.id,
+        ip_address=get_client_ip(request),
+    )
 
 
 @router.post("/{document_id}/analyze", response_model=RiskAnalysisResponse)
 async def analyze_document_by_id(
     document_id: uuid.UUID,
     background_tasks: BackgroundTasks,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -79,6 +90,16 @@ async def analyze_document_by_id(
     document = await get_document(db, document_id, current_user.organization_id)
     analysis = await start_analysis(db, document.id, current_user.organization_id)
     background_tasks.add_task(analyze_document, document.id, current_user.organization_id)
+    await log_action(
+        db,
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="document.analyze",
+        resource_type="document",
+        resource_id=str(document.id),
+        metadata={"filename": document.filename},
+        ip_address=get_client_ip(request),
+    )
     return analysis
 
 

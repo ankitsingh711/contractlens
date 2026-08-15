@@ -9,6 +9,7 @@ from app.core.logging import get_logger
 from app.db.session import AsyncSessionLocal
 from app.models.document import Document, DocumentStatus, DocumentType
 from app.models.document_chunk import DocumentChunk
+from app.services.audit_service import log_action
 from app.services.embeddings import get_embedding_provider
 from app.services.parsing.chunker import chunk_pages
 from app.services.parsing.extractors import parse_document
@@ -23,6 +24,14 @@ _CONTENT_TYPE_TO_DOCUMENT_TYPE = {
     "text/plain": DocumentType.TXT,
 }
 
+# Magic-byte signatures for the file types we accept. The client-supplied
+# Content-Type header is just a claim — a malicious or buggy client can
+# set it to anything, so a mismatched signature (e.g. an .exe renamed to
+# report.pdf with Content-Type: application/pdf) is rejected here rather
+# than trusted at face value.
+_PDF_SIGNATURE = b"%PDF-"
+_ZIP_SIGNATURE = b"PK\x03\x04"  # DOCX is a zip container (OOXML)
+
 
 def resolve_document_type(content_type: str) -> DocumentType:
     document_type = _CONTENT_TYPE_TO_DOCUMENT_TYPE.get(content_type)
@@ -33,6 +42,28 @@ def resolve_document_type(content_type: str) -> DocumentType:
     return document_type
 
 
+def _validate_file_content(data: bytes, document_type: DocumentType) -> None:
+    """Verifies the file's actual bytes match its declared type, instead
+    of trusting the client-supplied Content-Type header alone."""
+    if document_type == DocumentType.PDF and not data.startswith(_PDF_SIGNATURE):
+        raise ValidationAppError(
+            "The file's content does not match a PDF — the upload was rejected."
+        )
+    elif document_type == DocumentType.DOCX and not data.startswith(_ZIP_SIGNATURE):
+        raise ValidationAppError(
+            "The file's content does not match a DOCX file — the upload was rejected."
+        )
+    elif document_type == DocumentType.TXT:
+        if data.startswith(_PDF_SIGNATURE) or data.startswith(_ZIP_SIGNATURE):
+            raise ValidationAppError(
+                "The file's content does not match a plain text file — the upload was rejected."
+            )
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValidationAppError("The text file is not valid UTF-8.") from exc
+
+
 async def create_document(
     db: AsyncSession,
     *,
@@ -41,6 +72,7 @@ async def create_document(
     filename: str,
     content_type: str,
     data: bytes,
+    ip_address: str | None = None,
 ) -> Document:
     document_type = resolve_document_type(content_type)
 
@@ -51,6 +83,8 @@ async def create_document(
         )
     if len(data) == 0:
         raise ValidationAppError("The uploaded file is empty.")
+
+    _validate_file_content(data, document_type)
 
     document = Document(
         organization_id=organization_id,
@@ -73,6 +107,17 @@ async def create_document(
     document.status = DocumentStatus.PROCESSING
     await db.commit()
     await db.refresh(document)
+
+    await log_action(
+        db,
+        organization_id=organization_id,
+        user_id=owner_id,
+        action="document.upload",
+        resource_type="document",
+        resource_id=str(document.id),
+        metadata={"filename": filename, "size_bytes": len(data)},
+        ip_address=ip_address,
+    )
     return document
 
 
@@ -176,7 +221,12 @@ async def get_document(
 
 
 async def delete_document(
-    db: AsyncSession, document_id: uuid.UUID, organization_id: uuid.UUID
+    db: AsyncSession,
+    document_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    *,
+    user_id: uuid.UUID | None = None,
+    ip_address: str | None = None,
 ) -> None:
     """Soft-deletes the document so it disappears from listings/retrieval
     while remaining recoverable; the underlying file and chunks are left
@@ -184,3 +234,14 @@ async def delete_document(
     document = await get_document(db, document_id, organization_id)
     document.deleted_at = func.now()
     await db.commit()
+
+    await log_action(
+        db,
+        organization_id=organization_id,
+        user_id=user_id,
+        action="document.delete",
+        resource_type="document",
+        resource_id=str(document_id),
+        metadata={"filename": document.filename},
+        ip_address=ip_address,
+    )

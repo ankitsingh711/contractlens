@@ -8,6 +8,7 @@ from app.core.security import create_access_token, hash_password, verify_passwor
 from app.models.organization import Organization
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.services.audit_service import log_action
 
 
 def _slugify(name: str) -> str:
@@ -15,7 +16,9 @@ def _slugify(name: str) -> str:
     return slug or "org"
 
 
-async def register_user(db: AsyncSession, payload: RegisterRequest) -> TokenResponse:
+async def register_user(
+    db: AsyncSession, payload: RegisterRequest, ip_address: str | None = None
+) -> TokenResponse:
     existing = await db.scalar(select(User).where(User.email == payload.email))
     if existing is not None:
         raise ValidationAppError("An account with this email already exists.")
@@ -42,16 +45,54 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> TokenResp
     await db.commit()
     await db.refresh(user)
 
+    await log_action(
+        db,
+        organization_id=organization.id,
+        user_id=user.id,
+        action="user.register",
+        resource_type="user",
+        resource_id=str(user.id),
+        ip_address=ip_address,
+    )
+
     token = create_access_token(user.id, organization.id)
     return TokenResponse(access_token=token)
 
 
-async def authenticate_user(db: AsyncSession, payload: LoginRequest) -> TokenResponse:
+async def authenticate_user(
+    db: AsyncSession, payload: LoginRequest, ip_address: str | None = None
+) -> TokenResponse:
     user = await db.scalar(select(User).where(User.email == payload.email))
-    if user is None or not verify_password(payload.password, user.hashed_password):
+
+    if user is None:
+        # Not attributable to any organization, so there is nowhere to
+        # record it in an org-scoped audit log — see docs/security.md.
         raise UnauthorizedError("Invalid email or password.")
+
+    if not verify_password(payload.password, user.hashed_password):
+        await log_action(
+            db,
+            organization_id=user.organization_id,
+            user_id=user.id,
+            action="user.login_failed",
+            resource_type="user",
+            resource_id=str(user.id),
+            ip_address=ip_address,
+        )
+        raise UnauthorizedError("Invalid email or password.")
+
     if not user.is_active:
         raise UnauthorizedError("This account has been deactivated.")
+
+    await log_action(
+        db,
+        organization_id=user.organization_id,
+        user_id=user.id,
+        action="user.login",
+        resource_type="user",
+        resource_id=str(user.id),
+        ip_address=ip_address,
+    )
 
     token = create_access_token(user.id, user.organization_id)
     return TokenResponse(access_token=token)

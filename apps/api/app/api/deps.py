@@ -1,7 +1,7 @@
 import uuid
 
 import jwt
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +11,17 @@ from app.db.session import get_db
 from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_client_ip(request: Request) -> str | None:
+    """Prefers the X-Forwarded-For header since the API sits behind an
+    ALB/CloudFront in production (see docs/architecture.md's AWS
+    section) — request.client.host alone would be the load balancer's
+    address, not the actual client's."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.client.host if request.client else None
 
 
 async def get_current_user(
