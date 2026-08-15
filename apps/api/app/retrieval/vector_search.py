@@ -26,7 +26,11 @@ async def vector_search(
             Document.status == DocumentStatus.COMPLETED,
             Document.deleted_at.is_(None),
         )
-        .order_by(distance)
+        # Secondary sort by chunk id: without a deterministic tiebreaker,
+        # rows with equal distance have unspecified relative order in
+        # Postgres (it can vary run to run with LIMIT), which would make
+        # which chunks land in the candidate pool non-deterministic.
+        .order_by(distance, DocumentChunk.id)
         .limit(limit)
     )
     if document_ids:

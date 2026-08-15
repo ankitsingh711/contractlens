@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: reflects Phase 1–5 (auth, document pipeline, hybrid RAG, LangGraph agent, risk analysis, document comparison). Diagrams for later phases (evaluation harness, observability, production cloud deploy) are marked **target state**. See the roadmap in the root [README](../README.md).
+> Status: reflects Phase 1–6 (auth, document pipeline, hybrid RAG, LangGraph agent, risk analysis, document comparison, evaluation harness + regression testing, cost/observability tracking). Diagrams for later phases (production cloud deploy) are marked **target state**. See the roadmap in the root [README](../README.md).
 
 ## 1. System overview
 
@@ -70,8 +70,8 @@ apps/api/app/
 ├── services/      # business logic: auth, document_service, rag_service, agent_service, risk_analysis_service, comparison_service, citations, embeddings, reranking, llm
 ├── retrieval/     # hybrid retrieval pipeline: vector_search, keyword_search, fusion (RRF)
 ├── agents/        # LangGraph agent: graph.py, nodes.py, state.py, tools/
-├── evaluation/    # eval harness, regression testing (Phase 6, planned)
-└── observability/ # Langfuse integration, cost/latency tracking (Phase 6, planned)
+├── evaluation/    # eval dataset loader + metrics (dataset.py, metrics.py)
+└── observability/ # ObservabilityClient: structured-log (default) + Langfuse
 ```
 
 Routers depend on services; services depend on models/db — never the reverse. Pydantic schemas are the only types that cross the API boundary; ORM models are never serialized directly.
@@ -161,7 +161,33 @@ flowchart LR
 
 `app/services/risk_analysis_service.py` runs as a background task per `POST /api/documents/{id}/analyze`, identical in shape to `document_service.process_document()` (its own DB session, polled status). `app/services/comparison_service.py` runs synchronously within `POST /api/comparisons` since it's pure retrieval with no LLM call — see `docs/analysis.md` for why comparison deliberately skips generation.
 
-## 7. Data model
+## 7. Evaluation flow
+
+`POST /api/evaluations/run` (`app/services/evaluation_service.py::run_evaluation`) runs as a background task, identical in shape to document processing and risk analysis: create a `RUNNING` row, do the work with its own DB session, land on `COMPLETED` or `FAILED`. What's different is that "the work" is running the entire agent graph from §5 once per dataset case, not a single pipeline pass.
+
+```mermaid
+flowchart TD
+    Trigger["POST /api/evaluations/run"] --> Load["load_dataset()<br/>qa_eval_v1.json — 52 cases"]
+    Load --> Loop["for each case, scoped to its seed document"]
+    Loop --> Agent["run_agent()<br/>— the SAME function /api/chat calls —<br/>classify → plan → retrieve → evaluate_evidence<br/>→ reason/abstain → validate_claims → validate_citations"]
+    Agent --> Score["compute_case_metrics()<br/>recall/precision, citation accuracy,<br/>faithfulness, answer relevance,<br/>hallucinated, passed"]
+    Score --> Result["EvaluationResult row<br/>+ linked AgentRun"]
+    Result --> Loop
+    Loop -->|all cases scored| Aggregate["aggregate means →<br/>EvaluationRun (faithfulness, citation_accuracy,<br/>retrieval_recall/precision, hallucination_rate,<br/>answer_relevance, avg latency/tokens/cost)"]
+    Aggregate --> Baseline["find most recent prior<br/>COMPLETED run, same org + dataset version"]
+    Baseline -->|found| Compare["compare each tracked metric,<br/>direction-aware, vs REGRESSION_THRESHOLD"]
+    Compare -->|any metric moved the wrong way| Flag["regressions: [{metric, baseline,<br/>current, delta}, ...]"]
+    Compare -->|none did| Clean["regressions: []"]
+    Baseline -->|no prior run| Clean
+    Flag --> Done["EvaluationRun.status = COMPLETED"]
+    Clean --> Done
+```
+
+Each case reuses the real chat pipeline (`run_agent()`) rather than a lighter-weight direct-retrieval check, and produces a real, independently-inspectable `AgentRun` — a failing eval case can be opened in the Agent Runs trace viewer, not just read as a number. See `docs/evaluation.md` for the full metric definitions and the rationale behind reusing the agent, comparing against the most recent run rather than a fixed baseline, and treating `answer_relevance`/`faithfulness` as lexical heuristics for now rather than an LLM-as-judge.
+
+Cost and latency are captured as a side effect of every agent run, not just eval runs: `app/services/cost.py::estimate_cost()` (a small explicit per-model pricing table) is applied to every `AgentRun`'s `input_tokens`/`output_tokens`, and `app/observability/` (`StructuredLogObservability` by default, `LangfuseObservability` when `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` are set) records a trace of model/tokens/cost/latency/step-count for every run, chat or eval alike — see `docs/evaluation.md` for the Langfuse self-hosting scope decision.
+
+## 8. Data model
 
 ```mermaid
 erDiagram
@@ -170,13 +196,17 @@ erDiagram
     ORGANIZATION ||--o{ CONVERSATION : owns
     ORGANIZATION ||--o{ AGENT_RUN : owns
     ORGANIZATION ||--o{ RISK_ANALYSIS : owns
+    ORGANIZATION ||--o{ EVALUATION_RUN : owns
     USER ||--o{ CONVERSATION : starts
     DOCUMENT ||--o{ DOCUMENT_CHUNK : "split into"
     DOCUMENT ||--o{ RISK_ANALYSIS : "analyzed by"
     CONVERSATION ||--o{ MESSAGE : contains
     CONVERSATION ||--o{ AGENT_RUN : triggers
     AGENT_RUN ||--o{ AGENT_STEP : "records"
+    AGENT_RUN ||--o{ EVALUATION_RESULT : "produced by (1 per eval case)"
     RISK_ANALYSIS ||--o{ RISK_FINDING : produces
+    EVALUATION_RUN ||--o{ EVALUATION_RESULT : contains
+    EVALUATION_RUN }o--o| EVALUATION_RUN : "baseline_run_id (self-ref)"
 
     ORGANIZATION {
         uuid id PK
@@ -226,6 +256,11 @@ erDiagram
         uuid organization_id FK
         uuid conversation_id FK
         enum status
+        string model
+        int input_tokens
+        int output_tokens
+        float estimated_cost_usd
+        float latency_ms
     }
     AGENT_STEP {
         uuid id PK
@@ -252,19 +287,57 @@ erDiagram
         float confidence
         json citations
     }
+    EVALUATION_RUN {
+        uuid id PK
+        uuid organization_id FK
+        string dataset_version
+        enum status
+        int total_cases
+        int passed_cases
+        int failed_cases
+        float faithfulness
+        float citation_accuracy
+        float retrieval_recall
+        float retrieval_precision
+        float hallucination_rate
+        float answer_relevance
+        float avg_latency_ms
+        float avg_cost_usd
+        uuid baseline_run_id FK
+        json regressions
+    }
+    EVALUATION_RESULT {
+        uuid id PK
+        uuid evaluation_run_id FK
+        uuid agent_run_id FK
+        string case_id
+        string category
+        bool passed
+        bool abstained
+        bool hallucinated
+        float retrieval_recall
+        float retrieval_precision
+        float citation_accuracy
+        float faithfulness
+        float answer_relevance
+        float latency_ms
+        int input_tokens
+        int output_tokens
+        float cost_usd
+    }
 ```
 
 PostgreSQL is used exclusively through async SQLAlchemy sessions with Alembic-managed migrations. The `vector` extension was enabled from the first migration, before any vector columns existed, so later phases could add `document_chunks.embedding` (HNSW index) and a generated `tsvector`/GIN column without a separate extension-enabling migration. See §8 (rationale) below and `docs/rag.md` for the full case for PostgreSQL+pgvector over a dedicated vector database.
 
-## 8. Multi-tenancy and auth
+## 9. Multi-tenancy and auth
 
 Every user belongs to an `Organization`. JWTs (HS256, bcrypt-hashed passwords) carry both `sub` (user id) and `org_id`; every authenticated request resolves the current user server-side, and every query for tenant-owned resources (documents, chunks, conversations, agent runs) filters by `organization_id` — no user can address another org's data by ID alone (verified by tests). Full authorization model and planned hardening (rate limiting, audit logs, upload content-sniffing) in `docs/security.md`.
 
-## 9. Provider abstractions
+## 10. Provider abstractions
 
 `LLM_PROVIDER`, `EMBEDDING_PROVIDER`, and `RERANKER_PROVIDER` environment variables select between a real provider (OpenAI, Cohere) and a deterministic `mock` implementation, so the full pipeline — upload, retrieval, generation, citation validation, abstention — is exercisable end-to-end with zero API keys (demo mode). Swapping a provider is a config change, not a code change, because each is implemented behind a common interface (`services/llm/`, `services/embeddings/`, `services/reranking/`).
 
-## 10. Local development topology
+## 11. Local development topology
 
 `docker-compose.yml` runs four services with health checks:
 
@@ -277,7 +350,7 @@ Every user belongs to an `Organization`. JWTs (HS256, bcrypt-hashed passwords) c
 
 This matches the shape of the target production deployment below without requiring cloud credentials for local work.
 
-## 11. Cloud architecture — target state (Phase 8)
+## 12. Cloud architecture — target state (Phase 8)
 
 `infrastructure/{terraform,docker,aws}` currently hold placeholders — this diagram is the intended production shape referenced throughout the README and this doc, to be implemented as Terraform in Phase 8. It is a design target, not yet-deployed infrastructure.
 
@@ -335,15 +408,16 @@ Design intent:
 - **S3** replaces the local disk `StorageBackend` — the code path is already provider-agnostic (`STORAGE_BACKEND=local|s3`), so this is a config change, not a rewrite.
 - **Secrets Manager** holds DB credentials and LLM/embedding/reranker provider API keys — never baked into images or committed to the repo.
 - **CI/CD** (GitHub Actions, `infrastructure/`) builds and pushes container images to ECR and applies Terraform for infra changes.
-- **Langfuse** receives LLM/agent traces (cost, latency, token usage per node) for observability — Phase 6.
+- **Langfuse** receives LLM/agent traces (cost, latency, token usage per node) — the `LangfuseObservability` integration exists as of Phase 6 (see §7), but this diagram's self-hosted-in-VPC Langfuse is still target state; today it points at Langfuse Cloud or a separately-run instance via `LANGFUSE_HOST`, not infrastructure this repo stands up.
 
-## 12. Trade-offs and known limitations
+## 13. Trade-offs and known limitations
 
 See the root [README](../README.md#trade-offs-so-far) for the current, maintained list (background processing via in-process `BackgroundTasks` rather than a queue, regex-heuristic chunking, mock embedding/reranker semantics, client-side auth guard, etc.) — kept in one place to avoid this document drifting out of sync with it.
 
-## 13. Related documents
+## 14. Related documents
 
 - [`docs/rag.md`](rag.md) — retrieval, chunking, and citation design rationale
 - [`docs/agent.md`](agent.md) — LangGraph agent design rationale
 - [`docs/security.md`](security.md) — auth and authorization model
-- [`docs/evaluation.md`](evaluation.md) — evaluation/regression testing plan
+- [`docs/evaluation.md`](evaluation.md) — evaluation dataset, metrics, and regression-detection rationale
+- [`docs/analysis.md`](analysis.md) — risk analysis and document comparison design rationale

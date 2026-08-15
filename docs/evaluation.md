@@ -1,24 +1,57 @@
 # Evaluation Strategy
 
-> Status: not yet implemented (planned for Phase 6). This document records the design and rationale up front.
+> Status: implemented (Phase 6 — see `apps/api/app/services/evaluation_service.py`, `app/evaluation/dataset.py`, `app/evaluation/metrics.py`, `app/models/evaluation_run.py`, `app/models/evaluation_result.py`, `evaluation/datasets/qa_eval_v1.json`, `evaluation/seed_documents/`, `apps/api/scripts/seed_demo_data.py`). Not yet implemented: an LLM-as-judge for answer relevance/faithfulness (both are lexical heuristics right now — see below) and a fixed golden baseline (regression detection compares against the most recent prior run, not a pinned one — see below).
 
 ## Why evaluation is a first-class system, not a manual spot-check
 
-"It looked right when I tried it" doesn't scale and doesn't survive a prompt or model change. The product's core claim — that answers are grounded and the system knows when it doesn't know — has to be measurable, or it's just a claim. Phase 6 builds a dataset of 50+ question/expected-answer/expected-source test cases (`evaluation/datasets/`) and an automated harness that scores every run against it.
+"It looked right when I tried it" doesn't scale and doesn't survive a prompt or model change. The product's core claim — that answers are grounded and the system knows when it doesn't know — has to be measurable, or it's just a claim. Phase 6 built a 52-case dataset (`evaluation/datasets/qa_eval_v1.json`) against four synthetic contracts (`evaluation/seed_documents/`: an MSA, an NDA, a DPA, and a Software License) and an automated harness (`POST /api/evaluations/run`) that scores every run against it.
 
-## Metrics
+The dataset spans termination, payment terms, renewal, liability, indemnification, confidentiality, governing law, dispute resolution, data protection, audit rights, SLA, and penalties, plus a dedicated `abstention` category: three cases with `expected_sources: []`, deliberately unanswerable from the seed corpus, so the harness can check the agent correctly declines instead of fabricating an answer under pressure to produce *something*.
 
-- **Faithfulness** — does the generated answer only state what the evidence supports?
-- **Citation accuracy** — do cited sources actually contain the cited claim?
-- **Retrieval recall / precision** — did retrieval surface the chunks needed to answer, without excessive noise?
-- **Hallucination rate** — fraction of claims not traceable to evidence.
-- **Answer relevance** — does the answer address the question asked?
-- **Latency, token usage, estimated cost** — production concerns tracked alongside correctness, not separately.
+## Why evaluation reuses the real agent pipeline instead of a lighter-weight direct-retrieval check
 
-## Why regression testing, not just a one-time score
+`_run_single_case()` (`app/services/evaluation_service.py`) calls `run_agent()` — the exact function `POST /api/chat` calls — scoped to the one seed document each case targets, rather than calling retrieval and generation directly. This is deliberately more expensive per case (a full graph traversal: classify → plan → retrieve → evaluate_evidence → reason/abstain → validate_claims → validate_citations) than a shortcut that just checks "does hybrid search return the right chunk." The point of the harness is to answer "does the thing users actually hit behave correctly," and a shortcut that bypasses the evidence gate, the citation-stripping step, or the abstention branch would silently stop testing the parts of the system most likely to regress. Every case also produces a real, inspectable `AgentRun` — so a failing eval case can be opened directly in the Agent Runs trace viewer, not just read as a score.
 
-A prompt tweak, a model swap, or a retrieval change can silently regress groundedness even while looking fine on a handful of manual tests. Every evaluation run is compared against a stored baseline; a drop past a threshold on any metric is flagged as a regression before it ships. This is the same discipline as a test suite gating a merge, applied to model/prompt/retrieval behavior instead of code correctness alone.
+## Metrics, as implemented
+
+Computed per case in `app/evaluation/metrics.py::compute_case_metrics()`, using the agent's own `retrieve` step output and returned citations — not a separate retrieval call:
+
+- **Retrieval recall / precision** — overlap between the sections the agent's `retrieve` step actually surfaced and the case's `expected_sources`. Abstention cases (no expected sections) are scored as trivially satisfied (1.0) rather than penalized — there's no "correct chunk" to score recall against when the document genuinely doesn't contain the answer.
+- **Citation accuracy** — fraction of the agent's returned citation sections that land in `expected_sources`. For abstention cases with no citations, this is 1.0 if the agent correctly abstained and 0.0 if it didn't.
+- **Faithfulness** — fraction of answer sentences carrying a citation marker, the same heuristic `validate_claims` already applies in the agent graph (see `docs/agent.md`), made numeric here instead of pass/fail. Getting this right required a real fix: citation markers conventionally trail their sentence ("claim. [1]"), and a naive sentence-split glues a trailing marker to the *start* of the next fragment instead of the sentence it belongs to. `faithfulness_score()` re-attaches leading markers to the previous sentence before scoring — caught by a failing unit test during development, not something assumed correct on the first pass.
+- **Answer relevance** — Jaccard token overlap between the generated answer and the case's `expected_answer`. Explicitly a lexical proxy, not semantic scoring — see below.
+- **Hallucinated** (bool) — true if the agent answered confidently (didn't abstain) but either should have abstained, or its citations don't overlap `expected_sources` at all.
+- **Passed** (bool) — abstention cases pass iff the agent abstained; normal cases pass iff the agent didn't abstain and cited at least one correct section.
+- **Latency, input/output tokens, estimated cost** — read directly off the `AgentRun` each case produces (see "Why cost/latency are tracked per-case" below), not recomputed by the harness.
+
+Aggregates (mean faithfulness, citation accuracy, retrieval recall/precision, hallucination rate, answer relevance, avg latency/tokens/cost, pass/fail counts) roll up into one `EvaluationRun` row per triggered run (`app/models/evaluation_run.py`); each case's own scores persist as an `EvaluationResult` row (`app/models/evaluation_result.py`) linked to both the `EvaluationRun` and the `AgentRun` it produced.
+
+## Why answer_relevance and faithfulness are lexical heuristics right now
+
+Both are proxies for something better: a real LLM-as-judge would read the generated answer against the expected answer (or against the evidence) and score semantic correctness/faithfulness, catching paraphrase and partial credit that word overlap misses entirely. It isn't implemented for a concrete reason, not just time pressure — demo mode's `MockLLMProvider` produces deterministic, templated extraction text, so there's no meaningfully-varied model output for a judge to evaluate against in the mode this project runs in by default (zero API keys). Jaccard overlap and the citation-marker-density heuristic are honest, cheap proxies that still catch the failure modes that matter most here (a completely off-topic answer scores near-zero overlap; an answer with uncited sentences scores low faithfulness) without pretending to be a semantic judge. Swapping in a real judge (calling `LLMProvider` with a scoring prompt when `LLM_PROVIDER != mock`) is a natural addition behind the same `compute_case_metrics()` interface.
+
+## Why regression detection compares against the most recent run, not a fixed baseline
+
+`_find_baseline()` (`app/services/evaluation_service.py`) looks up the most recent prior `COMPLETED` `EvaluationRun` for the same organization and dataset version, not a pinned "golden" run from some earlier date. A fixed baseline goes stale the moment a deliberate, accepted change shifts the numbers (a new prompt version, a provider swap) — every run after that would show a permanent "regression" against a baseline nobody intends to match anymore, training people to ignore the signal. Comparing against the immediately-preceding run means regression detection always answers "did the *last* change make things worse," which is the question that actually matters when iterating. The trade-off: a string of small regressions across several runs, each individually under `REGRESSION_THRESHOLD` (default 0.03), won't trip the flag even though the cumulative drift might be real — a longer-window trend view is a reasonable future addition, not implemented here.
+
+Direction matters per metric: higher is better for faithfulness, citation_accuracy, retrieval_recall, retrieval_precision, and answer_relevance; lower is better for hallucination_rate — encoded once as `_TRACKED_METRICS` in `evaluation_service.py` so a new metric only needs one entry to participate in regression detection.
+
+## Why cost/latency are tracked per-case, not just aggregated
+
+Each `EvaluationResult` stores its own `latency_ms`, `input_tokens`, `output_tokens`, and `cost_usd`, pulled straight from the `AgentRun` that case produced, rather than only recording an aggregate mean on the `EvaluationRun`. An aggregate alone can't answer "which category of question is expensive" or "did this one case blow up the token count" — both real questions when tuning prompts or retrieval parameters for cost, not just correctness. This piggybacks on a fix made in the same phase: `AgentRun.input_tokens`/`output_tokens` columns existed since Phase 4 but were never actually populated until this phase wired `app/services/cost.py::estimate_cost()` onto every agent run — a real gap in the original persistence code, caught while building the cost-tracking feature that needed the data to be real, not a new column being added now.
+
+## Why cost is an explicit small pricing table, not a live pricing API call
+
+`app/services/cost.py` hardcodes approximate per-1K-token rates for `mock-llm` ($0), `gpt-4o-mini`, and `gpt-4o`. A live call to a pricing API on every agent run would add a network dependency and latency to the exact code path (`reason` → `final_response`) that's supposed to be fast, in service of a number that's already an estimate, not a bill. The table is small and explicit specifically so it's easy to eyeball and update when provider pricing changes.
 
 ## Why prompts are versioned files, not inline strings
 
-Prompts are the part of an LLM system most likely to change under iteration. Versioning them as files (`prompts/<task>/v1.txt`, `v2.txt`, ...) and recording the prompt version used on every agent run means a regression can be traced to *which* prompt version caused it, and a rollback is a config change, not a code change.
+Prompts are the part of an LLM system most likely to change under iteration. They live as files (`prompts/qa/v1.txt`, `prompts/risk_detection/v1.txt`, loaded via `app/core/prompts.py`) rather than inline strings, so a regression can in principle be traced to *which* prompt version caused it and a rollback is a config change, not a code change. **Current limitation, stated honestly**: only `v1` exists for each task today — no prompt version has actually been iterated on yet, so the "trace a regression to a prompt version" story is designed-for but not yet exercised end to end. `EvaluationRun` doesn't currently record which prompt version produced it; that's a natural addition once a `v2` prompt actually exists to compare against `v1`.
+
+## Seed data and demo corpus
+
+`evaluation/seed_documents/*.txt` — four synthetic contracts (Master Services Agreement, Non-Disclosure Agreement, Data Processing Agreement, Software License Agreement) with realistic numbered sections, written specifically to give the eval dataset's `expected_sources` something stable to point at. `apps/api/scripts/seed_demo_data.py` is idempotent (matches on filename within the demo org, safe to re-run on every `docker compose up`) and pushes all four through the real document pipeline (`document_service.process_document()` — parse, chunk, embed, index) rather than inserting rows directly, so the seeded documents are indistinguishable from a real upload. It creates (or reuses) a fixed demo org and user (`demo@contractlens-demo.com`; see the script for the password). `docker-compose.yml` mounts `./evaluation:/evaluation:ro` into the API container so both the seed files and `qa_eval_v1.json` are available at runtime without baking them into the image.
+
+## Regression detection, in the API
+
+`EvaluationRun.regressions` is a JSONB list of `{metric, baseline, current, delta}` objects, computed once when a run completes and stored rather than recomputed on every read — so the regression verdict for a given run never silently changes if a later run becomes the new "most recent" baseline for some other run's comparison. The Evaluations UI surfaces this as a banner on the run detail page when the list is non-empty, and a per-case table (linking each case to its `AgentRun` trace) underneath the aggregate stat cards.

@@ -19,8 +19,14 @@ _STOPWORDS = frozenset(
     it its it's he she they them their his her our your my
     not no nor
     agreement party parties hereby herein thereof pursuant
+    described
     """.split()
 )
+# "described" is filtered alongside "agreement"/"party"/"shall" above: it is
+# a generic cross-reference verb ("the Services described in each SOW", "as
+# described herein") that shows up in almost every contract regardless of
+# subject matter, so on its own it is not evidence a query's real subject
+# was found in a document.
 
 
 def _significant_tokens(text: str) -> set[str]:

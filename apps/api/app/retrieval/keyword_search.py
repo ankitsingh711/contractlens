@@ -30,7 +30,9 @@ async def keyword_search(
             Document.deleted_at.is_(None),
             DocumentChunk.search_vector.op("@@")(tsquery),
         )
-        .order_by(rank.desc())
+        # Secondary sort by chunk id for the same reason as vector_search:
+        # ties on rank alone have unspecified order under LIMIT.
+        .order_by(rank.desc(), DocumentChunk.id)
         .limit(limit)
     )
     if document_ids:

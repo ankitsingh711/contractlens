@@ -28,16 +28,20 @@ from app.services.document_service import create_document, process_document
 
 DEMO_ORG_NAME = "ContractLens Demo"
 DEMO_ORG_SLUG = "contractlens-demo-seed"
-DEMO_USER_EMAIL = "demo@contractlens.local"
+DEMO_USER_EMAIL = "demo@contractlens-demo.com"
 DEMO_USER_PASSWORD = "demopassword123"
 DEMO_USER_NAME = "Demo User"
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]  # .../apps/api/scripts/.. -> repo root
-SEED_DIR = _REPO_ROOT / "evaluation" / "seed_documents"
-if not SEED_DIR.exists():
-    # Fallback for running inside the Docker image, where the repo root
-    # layout differs from the local monorepo checkout.
-    SEED_DIR = Path("/evaluation/seed_documents")
+_FILE_PARENTS = Path(__file__).resolve().parents
+# Local checkout: .../apps/api/scripts/seed_demo_data.py -> parents[3] is
+# the repo root. Docker image: /app/scripts/seed_demo_data.py has only 2
+# parents, so fall back to the /evaluation mount configured in
+# docker-compose.yml instead of indexing past the end of parents.
+SEED_DIR = (
+    _FILE_PARENTS[3] / "evaluation" / "seed_documents"
+    if len(_FILE_PARENTS) > 3
+    else Path("/evaluation/seed_documents")
+)
 
 SEED_FILES = [
     "master_services_agreement.txt",

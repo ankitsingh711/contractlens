@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, ShieldAlert, MessagesSquare, Gauge } from "lucide-react";
+import { FileText, ShieldAlert, MessagesSquare, Gauge, Quote, CheckCircle2, DollarSign } from "lucide-react";
 import Link from "next/link";
 
 import { RunStatusBadge } from "@/components/agent-runs/run-status-badge";
@@ -10,12 +10,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentRuns } from "@/hooks/use-agent-runs";
 import { useDocuments } from "@/hooks/use-documents";
+import { useEvaluationRuns } from "@/hooks/use-evaluations";
 
 export default function DashboardPage() {
   const { data: documents, isLoading: documentsLoading } = useDocuments();
   const { data: agentRuns, isLoading: agentRunsLoading } = useAgentRuns();
+  const { data: evaluationRuns, isLoading: evaluationRunsLoading } = useEvaluationRuns();
   const recentDocuments = documents?.slice(0, 5) ?? [];
   const recentRuns = agentRuns?.slice(0, 5) ?? [];
+  const latestCompletedEval = evaluationRuns?.find((run) => run.status === "completed") ?? null;
 
   const avgLatency =
     agentRuns && agentRuns.length > 0
@@ -38,6 +41,30 @@ export default function DashboardPage() {
       label: "Avg Latency",
       icon: Gauge,
       value: avgLatency !== null ? `${avgLatency.toFixed(1)}s` : "—",
+    },
+    {
+      label: "Citation Accuracy",
+      icon: Quote,
+      value:
+        !evaluationRunsLoading && latestCompletedEval?.citation_accuracy != null
+          ? `${(latestCompletedEval.citation_accuracy * 100).toFixed(1)}%`
+          : "—",
+    },
+    {
+      label: "Faithfulness",
+      icon: CheckCircle2,
+      value:
+        !evaluationRunsLoading && latestCompletedEval?.faithfulness != null
+          ? `${(latestCompletedEval.faithfulness * 100).toFixed(1)}%`
+          : "—",
+    },
+    {
+      label: "Est. AI Cost / Question",
+      icon: DollarSign,
+      value:
+        !evaluationRunsLoading && latestCompletedEval?.avg_cost_usd != null
+          ? `$${latestCompletedEval.avg_cost_usd.toFixed(2)}`
+          : "—",
     },
   ];
 
