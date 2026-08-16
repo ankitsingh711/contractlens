@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 7 (security hardening: rate limiting, audit logging, upload content validation) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 8 (production Docker, CI/CD, Terraform/AWS architecture) complete.**
 
 ## Why this project exists
 
@@ -118,7 +118,16 @@ Full RAG and agent architecture diagrams land in `docs/rag.md` and `docs/agent.m
 - **Tests**: 84/84 backend tests passing — added audit-logging tests (every logged action, role-gating, org-scoping), upload-content-validation tests (spoofed PDF/DOCX/TXT rejected, genuine files accepted), and rate-limit tests against a real Redis instance (independent budgets per identifier, 429 shape, `/api/health` always exempt).
 - **A real bug caught along the way, unrelated to the feature being built**: `apps/api/.gitignore`'s unanchored `storage/` pattern was matching *any* directory named `storage`, including the `app/services/storage/` source package (the local/S3 storage-backend abstraction from Phase 2) — not just the intended `apps/api/storage/` local upload directory. That package had been untracked by git since Phase 2; Docker builds never noticed because `COPY . .` copies from disk, not from git, but a fresh `git clone` would have been missing the storage backend entirely. Fixed by anchoring the pattern (`/storage/`) and committing the four previously-untracked files.
 
-Everything else described below (Phase 8+ items) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
+## What's implemented so far (Phase 8)
+
+- **Production Docker**: `apps/api/Dockerfile` is now multi-stage (a build stage with the compiler toolchain, a slim runtime stage without it) and runs as a non-root user; both `apps/api/Dockerfile` and `apps/web/Dockerfile` have real `HEALTHCHECK` instructions (a new minimal `apps/web/app/api/health/route.ts` gives the web container something to check, since the Next.js standalone server has no built-in health route). `docker-entrypoint.sh` only enables `uvicorn --reload` when `ENV=local` — a production container never watches the filesystem for changes. `docker-compose.prod.yml` is a standard Compose *override* (used as `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`, not a replacement) that drops the dev bind-mount, sets `ENV=production`, and stops publishing Postgres/Redis ports to the host — verified live: all four services reported `healthy`, `--reload` was confirmed off via the startup log line, and the container ran as a non-root user, all checked against the real stack rather than assumed.
+- **A real, previously-invisible bug found and fixed**: no Alembic migration ever ran `CREATE EXTENSION vector` — local dev only worked because the `pgvector/pgvector:pg16` Docker image happens to enable it during `initdb`. A vanilla Postgres instance (like RDS) would have failed on the first migration that adds a vector column. Fixed by adding `CREATE EXTENSION IF NOT EXISTS vector` to that migration directly, and **proved** the fix rather than trusting it: created a brand-new database with zero extensions, ran the full migration chain (`c2a78ee...` through `b29dc39...`) against it from nothing, and confirmed both the `vector` extension and all 14 tables existed afterward.
+- **Terraform AWS infrastructure** (`infrastructure/terraform/`, 15 files): VPC with public/app/data subnets across 2 AZs, ECS Fargate cluster running the api and web images behind one path-routed ALB (`/api/*` → api target group, everything else → web), RDS Postgres 16 in private subnets, ElastiCache Redis, a private encrypted S3 bucket for documents (matching how `app/services/storage/s3.py` actually accesses it — server-side credentials + presigned URLs, not public access), CloudFront in front of the ALB (with `/api/*` explicitly bypassing cache since those routes are dynamic/authenticated/SSE), ECR repos, Secrets Manager for `SECRET_KEY`/DB credentials/LLM keys, and least-privilege IAM (the web service gets no AWS role at all; the api's task role is scoped to only its one S3 bucket). This is infrastructure-as-code demonstrating the deployment architecture, not a deployed environment — see the trade-offs below and `infrastructure/terraform/README.md` for the honest "what this doesn't do" list. `terraform fmt`, `terraform init -backend=false`, and `terraform validate` all pass clean.
+- **CI/CD**: `.github/workflows/ci.yml` implements Lint → Type Check → Test → Build → Security Scan → Docker Build as a real job graph (not a flat list) with `needs:` dependencies, so Docker images only build after lint/tests/security scan pass — matching "production deployment should require passing tests." Every command in the pipeline was run and verified locally before being wired in, including a Postgres+Redis service-container setup for the backend test job matching how `tests/conftest.py` actually configures itself.
+- **Frontend tests, from zero**: apps/web had no tests before this phase — a real gap against the project's own testing goals, not busywork padding. Added Vitest + React Testing Library (confirmed as this Next.js version's documented approach by reading `node_modules/next/dist/docs/` directly, per this repo's own `AGENTS.md` warning that this version has non-default conventions) with 20 tests covering citation-marker rendering (`FormattedAnswer` — the same class of attribution bug that was caught and fixed in the backend's `faithfulness_score`), the `apiFetch`/`ApiError` wrapper every API call goes through, and the risk-score severity-band boundaries (the off-by-one-prone kind of logic worth locking down).
+- **Tests**: 84/84 backend + 20/20 new frontend tests passing.
+
+Everything else described below (Phase 9+ items) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
 
 ## Why these technology choices
 
@@ -141,13 +150,21 @@ This starts:
 
 | Service   | URL                              |
 |-----------|-----------------------------------|
-| Web       | http://localhost:3002 (mapped from container port 3000 — see note below) |
+| Web       | http://localhost:3000             |
 | API       | http://localhost:8000            |
 | API docs  | http://localhost:8000/docs       |
 | Postgres  | localhost:5433 (mapped from container port 5432) |
 | Redis     | localhost:6379                   |
 
-> The Postgres and web ports are remapped (5433, 3002) in `docker-compose.yml` to avoid colliding with other local services on the default ports. Adjust freely for your machine.
+> Postgres is remapped to 5433 in `docker-compose.yml` to avoid colliding with a locally-installed Postgres on the default 5432. Adjust freely for your machine.
+
+### Running a production-shaped stack locally
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+This is the standard Compose override pattern — `docker-compose.prod.yml` (see the file itself for the full annotated diff) drops the live-reload source bind-mount, sets `ENV=production` so the API starts without `--reload`, stops publishing Postgres/Redis ports to the host, and tightens the restart policy. Verified locally: all four services report `healthy`, `docker exec contractlens-api whoami` returns a non-root `app` user, and both `/api/health` (API) and `/api/health` (web, via a small `apps/web/app/api/health/route.ts`) respond 200.
 
 Demo mode is on by default (`LLM_PROVIDER=mock` etc. in `.env.example`) — the app is fully usable without any API keys. Set real provider keys in `.env` to use live models once later phases add LLM calls.
 
@@ -177,16 +194,30 @@ See `.env.example` for the full list (database, storage, LLM/embedding/reranker 
 ## Testing
 
 ```bash
-make test-api      # backend: pytest (auth, health — more added each phase)
+make test-api      # backend: pytest — 84 tests (auth, documents, retrieval, agent, risk analysis, evaluation, security)
 make lint-api       # ruff
 make typecheck-web  # tsc --noEmit
 make lint-web       # eslint
+cd apps/web && npm test   # frontend: vitest — 20 tests (citation rendering, API client, risk scoring)
 ```
+
+`.github/workflows/ci.yml` runs all of the above (plus a security scan and a Docker build) as a real job graph on every PR and push to `main` — see the "CI/CD" section below.
+
+## CI/CD
+
+GitHub Actions (`.github/workflows/ci.yml`) implements `Lint → Type Check → Test → Build → Security Scan → Docker Build` as dependent jobs, not a flat list — the Docker build jobs `needs:` the lint/test/security jobs, so a broken pipeline can't produce an image. The backend test job spins up real Postgres (`pgvector/pgvector:pg16`, matching local dev exactly) and Redis service containers rather than mocking either. Every command in the workflow was run and confirmed passing locally before being wired in — see the Phase 8 trade-offs below for the two places coverage is intentionally incomplete (backend type-checking, Python dependency security scanning) and why.
+
+## Deployment
+
+`infrastructure/terraform/` contains Terraform for the target AWS architecture (VPC, ECS Fargate for both services behind one path-routed ALB, RDS Postgres, ElastiCache Redis, S3 for documents, CloudFront, ECR, Secrets Manager, least-privilege IAM) — see `infrastructure/terraform/README.md` for the deploy sequence and an explicit "what this doesn't do" list. This is infrastructure-as-code demonstrating the deployment architecture (passes `terraform fmt`/`validate` cleanly); it has not been applied against a real AWS account since none is available in this environment — see the trade-offs section.
 
 ## Trade-offs (so far)
 
 - **Auth guard on the frontend is still client-side** (`useEffect` redirect), not fixed in Phase 7 as originally sketched — it turns out to need a bigger change than "add middleware.ts": Next.js middleware runs at the edge and can only see cookies/headers, not `localStorage`, and this app stores the JWT in `localStorage`. A real fix means switching to an httpOnly cookie-based session, which is a legitimate Phase 7-adjacent security improvement but a bigger architectural change than the rest of this phase — left open rather than half-done.
 - **Background processing via `FastAPI BackgroundTasks`, not a real task queue.** This runs in-process and is lost if the API process restarts mid-job — acceptable for an MVP where processing takes seconds, but Redis is already in the stack specifically so this can move to a proper queue (RQ/Celery/arq) without changing the pipeline logic itself, which is already isolated in `document_service.process_document()`.
+- **Terraform has not been applied against a real AWS account.** No AWS credentials are available in this environment, so "correct, well-organized IaC that passes `terraform validate`" is the honest bar here, not "proven to deploy." `terraform fmt`/`init -backend=false`/`validate` all pass, and the resource graph was reviewed carefully, but there is no substitute for a real `terraform apply` — treat this as a strong, reviewable starting point, not a battle-tested module. The S3 backend for remote state is also left commented out with setup instructions rather than configured, since there's no bucket to point it at.
+- **CI security scanning is informational for Python deps, blocking for JS deps.** `npm audit --audit-level=high` fails the build (0 vulnerabilities currently — a real gate). `pip-audit` runs with `continue-on-error: true` because it has no severity filter and currently reports ~60 advisories against pinned transitive dependencies (langgraph, starlette, urllib3, pypdf, etc.) — blocking on all of those today would redden CI for issues unrelated to this app's own code, most of which don't have a newer compatible pin available yet. Worth tightening once there's a process for triaging and either upgrading or explicitly accepting individual findings.
+- **No `typecheck-backend` CI job.** `mypy` is listed in `requirements-dev.txt` but was never actually configured (no `mypy.ini`, no `[tool.mypy]` section) — running it as-is throws 32 pre-existing errors against code that was never written with mypy in mind. Rather than either silently skip type-checking or block CI on a wall of unrelated errors, the gap is left explicit: backend type-adjacent coverage currently comes from `ruff` only, noted directly in the workflow file rather than hidden.
 - **Chunking is regex-heuristic, not ML-based structure detection.** It handles common contract heading styles (`8.2 Termination`, `ARTICLE VIII - TERMINATION`) but will miss unusual formatting. Documented as a known limitation rather than overclaiming a general-purpose document parser.
 - **DOCX has no real page numbers** (Word doesn't store fixed page boundaries in the XML without rendering), so DOCX chunks have `page: null`. PDF and the future PDF-viewer-based citation UI (Phase 3) rely on real page numbers, which PDF provides natively.
 - The mock embedding provider (hashed bag-of-words) is good enough to exercise retrieval end-to-end in demo mode but is **not semantically meaningful** — it will not understand synonyms or paraphrase, unlike a real embedding model.
@@ -211,7 +242,7 @@ make lint-web       # eslint
 - [x] Phase 5 — Risk analysis, document comparison
 - [x] Phase 6 — Observability (Langfuse), evaluation framework, regression testing
 - [x] Phase 7 — Security hardening, rate limiting, audit logs
-- [ ] Phase 8 — Production Docker, CI/CD, Terraform/AWS
+- [x] Phase 8 — Production Docker, CI/CD, Terraform/AWS
 - [ ] Phase 9 — UI polish
 - [ ] Phase 10 — Full run, fixes, final docs
 

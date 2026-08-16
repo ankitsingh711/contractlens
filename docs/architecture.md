@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: reflects Phase 1–7 (auth, document pipeline, hybrid RAG, LangGraph agent, risk analysis, document comparison, evaluation harness + regression testing, cost/observability tracking, security hardening). Diagrams for later phases (production cloud deploy) are marked **target state**. See the roadmap in the root [README](../README.md).
+> Status: reflects Phase 1–8 (auth, document pipeline, hybrid RAG, LangGraph agent, risk analysis, document comparison, evaluation harness + regression testing, cost/observability tracking, security hardening, production Docker + CI/CD + Terraform AWS infrastructure). The cloud architecture (§12) is implemented as Terraform but not deployed against a real AWS account — see that section for exactly what "implemented" means here. See the roadmap in the root [README](../README.md).
 
 ## 1. System overview
 
@@ -357,71 +357,73 @@ Every user belongs to an `Organization`. JWTs (HS256, bcrypt-hashed passwords) c
 | Service    | Image / build              | Local port | Role                                  |
 |------------|-----------------------------|------------|----------------------------------------|
 | `postgres` | `pgvector/pgvector:pg16`   | 5433→5432  | Relational + vector store              |
-| `redis`    | `redis:7-alpine`           | 6379       | Reserved for queue/cache/rate-limit    |
+| `redis`    | `redis:7-alpine`           | 6379       | Rate-limit counters (`app/core/rate_limit.py`), reserved for a real task queue |
 | `api`      | `apps/api/Dockerfile`      | 8000       | FastAPI, source volume-mounted (`--reload`) |
-| `web`      | `apps/web/Dockerfile`      | 3002→3000  | Next.js                                |
+| `web`      | `apps/web/Dockerfile`      | 3000       | Next.js                                |
 
-This matches the shape of the target production deployment below without requiring cloud credentials for local work.
+This matches the shape of the target production deployment below without requiring cloud credentials for local work. `docker-compose.prod.yml` (Phase 8) is a Compose override for running a production-shaped stack locally — no source bind-mount, `ENV=production` (disables `--reload`), Postgres/Redis no longer published to the host — see the README's "Running a production-shaped stack locally" section.
 
-## 12. Cloud architecture — target state (Phase 8)
+## 12. Cloud architecture (Phase 8 — implemented as Terraform, not deployed)
 
-`infrastructure/{terraform,docker,aws}` currently hold placeholders — this diagram is the intended production shape referenced throughout the README and this doc, to be implemented as Terraform in Phase 8. It is a design target, not yet-deployed infrastructure.
+`infrastructure/terraform/` (15 files, organized by concern — see `infrastructure/terraform/README.md`) implements the architecture below as real HCL: VPC with public/app/data subnets across 2 AZs, ECS Fargate running both the api and web images behind **one** ALB with path-based routing (`/api/*` → api target group, everything else → web — cheaper and simpler than two ALBs at this scale), RDS Postgres 16 in private subnets, ElastiCache Redis, a private encrypted S3 bucket, CloudFront in front of the ALB, ECR repos, Secrets Manager, and least-privilege IAM (the web service gets no AWS role at all; the api's task role is scoped to only its one S3 bucket, nothing broader). `terraform fmt`, `terraform init -backend=false`, and `terraform validate` all pass with zero errors and zero warnings.
+
+**What this is not**: applied against a real AWS account. There are no AWS credentials in this environment, so the bar met here is "correct, internally-consistent, reviewable infrastructure-as-code," not "proven via `terraform apply`." The remote-state S3 backend is deliberately left commented out with setup instructions rather than pointed at a real bucket that doesn't exist. Treat this as a strong, reviewable starting point — see `infrastructure/terraform/README.md`'s explicit "what this doesn't do" section (no CI-driven auto-apply, no multi-region/DR, no WAF, no cost estimate) for the full honest list.
 
 ```mermaid
 flowchart TB
     Internet((Internet))
-
-    subgraph Edge["Edge / CDN"]
-        CF[CloudFront or Vercel Edge]
-    end
+    CF[CloudFront<br/>/api/* bypasses cache]
 
     subgraph VPC["AWS VPC"]
         subgraph Public["Public subnets"]
-            ALB[Application Load Balancer]
+            ALB["ALB — one, path-routed<br/>/api/* → api target group<br/>else → web target group"]
         end
 
-        subgraph Private["Private subnets"]
-            ECS[ECS Fargate service<br/>apps/api containers, autoscaled]
+        subgraph Private["App subnets"]
+            ECSApi[ECS Fargate<br/>apps/api]
+            ECSWeb[ECS Fargate<br/>apps/web — needs SSR<br/>for authenticated pages,<br/>not static hosting]
         end
 
         subgraph DataTier["Data subnets"]
-            RDS[(RDS PostgreSQL<br/>pgvector extension<br/>Multi-AZ)]
+            RDS[(RDS PostgreSQL 16<br/>pgvector extension<br/>+ Alembic-managed schema)]
             EC[(ElastiCache Redis)]
         end
     end
 
-    S3[(S3 — document storage)]
-    Secrets[Secrets Manager<br/>DB creds, provider API keys]
+    S3[(S3 — private, encrypted<br/>document storage)]
+    Secrets[Secrets Manager<br/>SECRET_KEY, DB creds, provider API keys]
     CW[CloudWatch<br/>logs + metrics]
     Langfuse[Langfuse<br/>LLM trace observability]
-    ECR[ECR — container images]
-    GH[GitHub Actions CI/CD]
+    ECR[ECR — api + web repos]
+    GH[GitHub Actions CI]
 
-    Internet --> CF
-    CF -->|static assets, apps/web| Internet
-    CF -->|/api/* proxy| ALB
-    ALB --> ECS
-    ECS --> RDS
-    ECS --> EC
-    ECS --> S3
-    ECS --> Secrets
-    ECS --> CW
-    ECS -.traces.-> Langfuse
-    GH -->|build & push image| ECR
-    ECR -->|deploy| ECS
-    GH -->|terraform apply| VPC
+    Internet --> CF --> ALB
+    ALB --> ECSApi
+    ALB --> ECSWeb
+    ECSApi --> RDS
+    ECSApi --> EC
+    ECSApi -->|presigned URLs| S3
+    ECSApi --> Secrets
+    ECSApi --> CW
+    ECSWeb --> CW
+    ECSApi -.traces.-> Langfuse
+    GH -->|build & push images<br/>Lint/Test/Security gate first| ECR
+    ECR -.->|manual/future: force new deployment| ECSApi
+    ECR -.->|manual/future: force new deployment| ECSWeb
 ```
 
 Design intent:
 
-- **`apps/web`** deploys to an edge/static host (Vercel or CloudFront+S3) — it holds no secrets and talks to the API only over REST.
-- **`apps/api`** deploys as containers on ECS Fargate behind an ALB, in private subnets — no direct internet ingress, autoscaled on request volume.
-- **RDS PostgreSQL** (Multi-AZ) replaces the local `pgvector/pgvector:pg16` container; pgvector extension enabled the same way via Alembic.
-- **ElastiCache Redis** replaces the local Redis container, once it moves from "reserved" to backing a real task queue and rate limiter.
-- **S3** replaces the local disk `StorageBackend` — the code path is already provider-agnostic (`STORAGE_BACKEND=local|s3`), so this is a config change, not a rewrite.
-- **Secrets Manager** holds DB credentials and LLM/embedding/reranker provider API keys — never baked into images or committed to the repo.
-- **CI/CD** (GitHub Actions, `infrastructure/`) builds and pushes container images to ECR and applies Terraform for infra changes.
-- **Langfuse** receives LLM/agent traces (cost, latency, token usage per node) — the `LangfuseObservability` integration exists as of Phase 6 (see §7), but this diagram's self-hosted-in-VPC Langfuse is still target state; today it points at Langfuse Cloud or a separately-run instance via `LANGFUSE_HOST`, not infrastructure this repo stands up.
+- **`apps/web` runs as its own ECS Fargate service, not a static/edge host.** The obvious-looking alternative (S3 + CloudFront, no containers) doesn't fit this app: it has authenticated, dynamic pages (dashboard, documents, chat) that need server-side rendering per-request, not a build-time-static export. CloudFront still sits in front, but as a cache/edge layer over the ALB, not a static-file origin.
+- **One ALB, not two.** Path-based routing (`/api/*` → api target group, everything else → web) is the standard pattern for "a few services behind one load balancer" and is cheaper and simpler than provisioning a second ALB at this scale.
+- **`apps/api`** deploys as containers on ECS Fargate behind the ALB, in app subnets with no direct internet ingress — the non-root, health-checked, multi-stage production image built in this same phase (see `apps/api/Dockerfile`) is what these tasks would actually run.
+- **RDS PostgreSQL 16** replaces the local `pgvector/pgvector:pg16` container. The pgvector extension is enabled by the app's own migration chain (`CREATE EXTENSION IF NOT EXISTS vector` in the first migration that adds a vector column — a real gap found and fixed in this phase, verified by running the full chain against a brand-new database), so this is not a manual RDS setup step; `alembic upgrade head` is sufficient on a vanilla Postgres 15+ instance.
+- **ElastiCache Redis** replaces the local Redis container, backing the rate limiter (`app/core/rate_limit.py`, implemented in Phase 7) and reserved for a future real task queue.
+- **S3** replaces the local disk `StorageBackend` — the code path is already provider-agnostic (`STORAGE_BACKEND=local|s3`), so this is a config change, not a rewrite. The Terraform bucket is private and encrypted, matching how `app/services/storage/s3.py` actually accesses it (server-side credentials + presigned URLs — never public).
+- **Secrets Manager** holds `SECRET_KEY`, DB credentials, and LLM/embedding/reranker provider API keys — never baked into images or committed to the repo.
+- **IAM is least-privilege**: the web service has no AWS role at all (it doesn't need one — all AWS access goes through the API); the api's task role is scoped to only its own S3 bucket.
+- **CI/CD** (`.github/workflows/ci.yml`, Phase 8) builds and validates both images on every PR/push; pushing to ECR and forcing a new ECS deployment is the natural next step but is not wired up yet — there's no registry to push to without a real AWS account, so this stays a documented manual/future step rather than a workflow that would fail on every run.
+- **Langfuse** receives LLM/agent traces (cost, latency, token usage per node) — the `LangfuseObservability` integration exists as of Phase 6 (see §7); it points at Langfuse Cloud or a separately-run instance via `LANGFUSE_HOST`, not infrastructure this repo's Terraform stands up.
 
 ## 13. Trade-offs and known limitations
 
@@ -434,3 +436,4 @@ See the root [README](../README.md#trade-offs-so-far) for the current, maintaine
 - [`docs/security.md`](security.md) — auth and authorization model
 - [`docs/evaluation.md`](evaluation.md) — evaluation dataset, metrics, and regression-detection rationale
 - [`docs/analysis.md`](analysis.md) — risk analysis and document comparison design rationale
+- [`infrastructure/terraform/README.md`](../infrastructure/terraform/README.md) — Terraform deploy sequence and explicit "what this doesn't do" list
