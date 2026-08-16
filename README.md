@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 9 (UI polish) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 10 (full run, fixes, final docs) complete — all 10 phases done.**
 
 ## Why this project exists
 
@@ -137,7 +137,14 @@ No screenshot/browser tooling is available in this environment, so this phase is
 - **Accessibility fixes on real gaps, not padding.** Four icon-only interactive elements had no accessible name (`aria-label`) — the assistant's send button, the copy-response button (which was also only reachable via hover, invisible to keyboard focus until `focus-visible:opacity-100` was added), the mobile nav trigger, and the per-document actions menu. Two disclosure-pattern buttons (agent-run step details, risk-finding details) gained `aria-expanded`. Checked and confirmed clean elsewhere: no hardcoded Tailwind color utility lacked a `dark:` counterpart, and the two existing shadcn dialog/sheet close buttons already had proper `sr-only` labels.
 - **Tests, lint, and build unaffected**: 84/84 backend + 20/20 frontend tests still pass, ruff/tsc/eslint clean, `next build` succeeds (now emitting `/_not-found` and `/api/health` as expected additional routes).
 
-Everything else described below (Phase 10 — full run and final polish) is what's left.
+## What's implemented so far (Phase 10)
+
+Full run of everything, against the live Docker stack, not just unit tests — every feature exercised end-to-end with real HTTP calls after restarting the `api`/`web` containers fresh.
+
+- **Full local verification, clean across the board**: 84/84 backend tests, ruff clean; `tsc --noEmit` clean, eslint clean, 20/20 frontend tests, `next build` succeeds (14 routes); `terraform validate` succeeds; `actionlint` on the CI workflow passes.
+- **A real bug found and fixed by the live smoke test**: document upload returned a 500 (`PermissionError` writing to `/app/storage`). The `api_storage` named Docker volume on this dev machine predated Phase 8's Dockerfile change to a non-root container user — Docker doesn't retroactively re-chown an *existing* volume's contents when the image's owning user changes, so the volume was still root-owned while the container now runs as uid 999 (`app`). Fixed by `chown -R app:app` on the existing volume. Verified this is not a latent bug for anyone else: ran a fresh, never-before-used named volume against the built image and confirmed Docker correctly initializes it with `app:app` ownership (copied from the image layer) on first mount — the fix here was a one-time local-environment correction, not a code change.
+- **End-to-end smoke test, live**: registered a new user/org, uploaded and processed a document, ran hybrid search, ran the full LangGraph chat agent (verified the SSE step sequence: `classify_query → plan → retrieve → reason → validate_claims → validate_citations → final_response`, with citations, cost, and per-step latency all populated), triggered abstention on an out-of-scope question (confidence `0.0`, `abstain` step present), ran risk analysis to completion, compared two documents, ran the evaluation harness against the seeded demo corpus (52 cases, faithfulness 1.0, meaningful non-trivial retrieval/citation metrics) and ran it a second time to confirm regression detection actually compares against the prior run (`baseline_run_id` correctly set, `regressions: []` since nothing changed), checked audit logs, and confirmed unauthenticated requests are rejected with 401. All 8 core dashboard routes served 200 from the running web container.
+- **Definition of Done, reviewed item by item** against the original spec: every capability listed there — compose up, frontend, backend, migrations, upload, processing, RAG, hybrid retrieval, citations, abstention, the LangGraph agent, tools, risk analysis, comparison, agent traces, evaluations, regression tests, observability, cost tracking, latency tracking, auth, authorization, tests, lint, type checks, README, architecture docs — was checked live or via the test suite, not assumed. The one gap surfaced (storage permission) was fixed during this pass, not left for later.
 
 ## Why these technology choices
 
@@ -243,6 +250,7 @@ GitHub Actions (`.github/workflows/ci.yml`) implements `Lint → Type Check → 
 - **Comparison shows raw retrieved text, not a normalized value.** The spec's example table shows compact values ("30 days" vs "7 days"); the implementation shows the full retrieved clause instead, by design — normalizing "30 days written notice" down to "30 days" is exactly the kind of lossy summarization step that risks silently dropping a qualifier, and showing the source text keeps the comparison as trustworthy as the retrieval underneath it.
 - **`answer_relevance` and `faithfulness` in the eval harness are lexical heuristics, not an LLM-as-judge.** `answer_relevance` is Jaccard token overlap between the generated answer and the case's `expected_answer`; `faithfulness` is the fraction of answer sentences carrying a citation marker (the same heuristic `validate_claims` already uses, made numeric). A real judge model would score meaning, not word overlap — not implemented because demo mode's mock LLM has nothing for a judge to meaningfully evaluate, and adding an LLM-as-judge call is real future work, not a rounding error.
 - **Self-hosted Langfuse is not stood up in `docker-compose.yml`.** Self-hosted Langfuse (v3) needs its own ClickHouse, MinIO, Redis, and Postgres — too heavy for what it would add here, especially since the Agent Runs UI (Phase 4) already serves as a purpose-built trace viewer for this app. `LangfuseObservability` supports Langfuse Cloud's free tier (just set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`) or a self-hosted instance run separately (`LANGFUSE_HOST` is configurable); the default `StructuredLogObservability` requires no external service at all. Stated here as a deliberate scope decision, not an oversight.
+- **A Docker named volume doesn't get re-chowned when the image's container user changes.** `docker-entrypoint.sh`/the Dockerfile correctly create `/app/storage` as `app:app` at build time, and a genuinely fresh `api_storage` volume inherits that ownership correctly on first mount (verified directly). But an *existing* volume created before Phase 8 switched the container to run as non-root keeps its old (root) ownership forever, since Docker only initializes a volume's contents once. This bit a long-running local dev environment in Phase 10 and was fixed with a one-time `chown` — worth knowing if a production deploy ever reuses a volume/EBS snapshot created under an older image.
 - **`AgentRun.input_tokens`/`output_tokens` existed as columns since Phase 4 but were never actually populated until Phase 6** — a real gap in the original agent-run persistence code, found while wiring up cost tracking, not a new feature being added from scratch. Worth flagging because it's the kind of bug that's easy to miss (the columns existed, so nothing looked obviously incomplete) until something downstream (cost estimation) needed the data to be real.
 
 ## Roadmap
@@ -256,7 +264,7 @@ GitHub Actions (`.github/workflows/ci.yml`) implements `Lint → Type Check → 
 - [x] Phase 7 — Security hardening, rate limiting, audit logs
 - [x] Phase 8 — Production Docker, CI/CD, Terraform/AWS
 - [x] Phase 9 — UI polish
-- [ ] Phase 10 — Full run, fixes, final docs
+- [x] Phase 10 — Full run, fixes, final docs
 
 ## Documentation
 
