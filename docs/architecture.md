@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: reflects Phase 1–6 (auth, document pipeline, hybrid RAG, LangGraph agent, risk analysis, document comparison, evaluation harness + regression testing, cost/observability tracking). Diagrams for later phases (production cloud deploy) are marked **target state**. See the roadmap in the root [README](../README.md).
+> Status: reflects Phase 1–7 (auth, document pipeline, hybrid RAG, LangGraph agent, risk analysis, document comparison, evaluation harness + regression testing, cost/observability tracking, security hardening). Diagrams for later phases (production cloud deploy) are marked **target state**. See the roadmap in the root [README](../README.md).
 
 ## 1. System overview
 
@@ -62,12 +62,12 @@ A single repo simplifies coordinated changes (e.g., a new API field and the UI t
 
 ```
 apps/api/app/
-├── api/v1/        # HTTP layer: routers (auth, documents, search, chat, conversations, agent_runs, comparisons, health)
-├── core/          # config, security, logging, structured errors, middleware
+├── api/v1/        # HTTP layer: routers (auth, documents, search, chat, conversations, agent_runs, comparisons, evaluations, audit_logs, health)
+├── core/          # config, security, logging, structured errors, middleware, rate_limit
 ├── db/            # session factory, declarative base, Alembic migrations
-├── models/        # SQLAlchemy ORM models (see §6 data model)
+├── models/        # SQLAlchemy ORM models (see §8 data model)
 ├── schemas/       # Pydantic request/response schemas
-├── services/      # business logic: auth, document_service, rag_service, agent_service, risk_analysis_service, comparison_service, citations, embeddings, reranking, llm
+├── services/      # business logic: auth, document_service, rag_service, agent_service, risk_analysis_service, comparison_service, audit_service, citations, embeddings, reranking, llm
 ├── retrieval/     # hybrid retrieval pipeline: vector_search, keyword_search, fusion (RRF)
 ├── agents/        # LangGraph agent: graph.py, nodes.py, state.py, tools/
 ├── evaluation/    # eval dataset loader + metrics (dataset.py, metrics.py)
@@ -197,7 +197,9 @@ erDiagram
     ORGANIZATION ||--o{ AGENT_RUN : owns
     ORGANIZATION ||--o{ RISK_ANALYSIS : owns
     ORGANIZATION ||--o{ EVALUATION_RUN : owns
+    ORGANIZATION ||--o{ AUDIT_LOG : owns
     USER ||--o{ CONVERSATION : starts
+    USER ||--o{ AUDIT_LOG : "acts (nullable)"
     DOCUMENT ||--o{ DOCUMENT_CHUNK : "split into"
     DOCUMENT ||--o{ RISK_ANALYSIS : "analyzed by"
     CONVERSATION ||--o{ MESSAGE : contains
@@ -325,13 +327,24 @@ erDiagram
         int output_tokens
         float cost_usd
     }
+    AUDIT_LOG {
+        uuid id PK
+        uuid organization_id FK
+        uuid user_id FK "nullable"
+        string action
+        string resource_type
+        string resource_id
+        json audit_metadata
+        string ip_address
+        timestamp created_at
+    }
 ```
 
 PostgreSQL is used exclusively through async SQLAlchemy sessions with Alembic-managed migrations. The `vector` extension was enabled from the first migration, before any vector columns existed, so later phases could add `document_chunks.embedding` (HNSW index) and a generated `tsvector`/GIN column without a separate extension-enabling migration. See §8 (rationale) below and `docs/rag.md` for the full case for PostgreSQL+pgvector over a dedicated vector database.
 
 ## 9. Multi-tenancy and auth
 
-Every user belongs to an `Organization`. JWTs (HS256, bcrypt-hashed passwords) carry both `sub` (user id) and `org_id`; every authenticated request resolves the current user server-side, and every query for tenant-owned resources (documents, chunks, conversations, agent runs) filters by `organization_id` — no user can address another org's data by ID alone (verified by tests). Full authorization model and planned hardening (rate limiting, audit logs, upload content-sniffing) in `docs/security.md`.
+Every user belongs to an `Organization`. JWTs (HS256, bcrypt-hashed passwords) carry both `sub` (user id) and `org_id`; every authenticated request resolves the current user server-side, and every query for tenant-owned resources (documents, chunks, conversations, agent runs, evaluations, audit logs) filters by `organization_id` — no user can address another org's data by ID alone (verified by tests). `UserRole` (admin/member/viewer) adds a second axis on top of org-scoping, so far used by exactly one endpoint (`GET /api/audit-logs`, admin-only). Rate limiting, audit logging, and upload content validation (Phase 7) are documented in full in `docs/security.md`.
 
 ## 10. Provider abstractions
 

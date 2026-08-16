@@ -20,6 +20,9 @@ apps/api/storage/
 # OS
 .DS_Store
 
+# Claude Code local tooling state (worktrees, etc.)
+.claude/
+
 # Terraform
 *.tfstate
 *.tfstate.*

@@ -1,7 +1,10 @@
 .venv/
 __pycache__/
 *.pyc
-storage/
+# Leading slash anchors this to apps/api/storage/ (the local upload
+# directory) only -- an unanchored "storage/" would also match the
+# app/services/storage/ source package and silently exclude it from git.
+/storage/
 .env
 .pytest_cache/
 .ruff_cache/

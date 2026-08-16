@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 6 (evaluation framework, regression testing, cost/observability tracking) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 7 (security hardening: rate limiting, audit logging, upload content validation) complete.**
 
 ## Why this project exists
 
@@ -109,7 +109,16 @@ Full RAG and agent architecture diagrams land in `docs/rag.md` and `docs/agent.m
 - **Frontend**: an Evaluations page — a run list plus a detail view with stat cards (faithfulness, citation accuracy, retrieval recall/precision, hallucination rate, cost/latency), a regression banner when the latest run regressed against its baseline, and a per-case table linking each case to its underlying agent-run trace.
 - **Tests**: 67/67 backend tests passing — added evaluation-service tests (dataset scoring, regression detection, org-scoping), metrics unit tests (faithfulness sentence-splitting including the leading-marker bug fix, lexical overlap), and cost-estimation tests. (One case, `test_evaluation_run_scores_the_full_dataset`, initially failed deterministically — not flakily — because the mock reranker's stopword list didn't cover "described," a generic contract cross-reference verb that gave one abstention case just enough lexical overlap to clear the evidence threshold; fixed by extending the stopword list, confirmed stable across repeated runs.)
 
-Everything else described below (Phase 7+ items) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
+## What's implemented so far (Phase 7)
+
+- **Rate limiting**: Redis-backed fixed-window throttling (`app/core/rate_limit.py`) as global middleware, keyed by authenticated user id or (for login/register, where it matters most) client IP. Only applies to mutating requests (POST/PUT/PATCH/DELETE) — GET/HEAD/OPTIONS are exempt, since this app's UI relies on polling (document processing status, evaluation run status) that can legitimately fire dozens of GETs a minute under normal use; the real abuse surface is login brute-forcing and write spam. Same structured `{error: {code: "RATE_LIMITED", ...}}` shape as every other error, plus a `Retry-After` header. Fails open if Redis is unreachable (availability over strictness, documented as a deliberate trade-off in `docs/security.md`).
+- **Upload content validation**: the client-supplied `Content-Type` header is no longer trusted at face value — `document_service._validate_file_content()` checks the file's actual magic bytes (PDF signature, DOCX/zip signature, valid UTF-8 for text) against its declared type before storing or processing it, rejecting a mislabeled/spoofed upload (e.g. binary content mislabeled as `text/plain`).
+- **Audit logging**: a new `audit_logs` table + `app/services/audit_service.py` records who did what to which resource — `user.register`, `user.login`, `user.login_failed`, `document.upload`, `document.delete`, `document.analyze`, `comparison.create` — each with the acting user, resource, IP, and metadata. `GET /api/audit-logs` is the first role-gated endpoint in the app (admin-only; other org members get 403), surfaced in Settings for admins.
+- **Frontend**: an admin-only Audit Log section on the Settings page (table of recent org activity, formatted actions/timestamps, generic metadata rendering).
+- **Tests**: 84/84 backend tests passing — added audit-logging tests (every logged action, role-gating, org-scoping), upload-content-validation tests (spoofed PDF/DOCX/TXT rejected, genuine files accepted), and rate-limit tests against a real Redis instance (independent budgets per identifier, 429 shape, `/api/health` always exempt).
+- **A real bug caught along the way, unrelated to the feature being built**: `apps/api/.gitignore`'s unanchored `storage/` pattern was matching *any* directory named `storage`, including the `app/services/storage/` source package (the local/S3 storage-backend abstraction from Phase 2) — not just the intended `apps/api/storage/` local upload directory. That package had been untracked by git since Phase 2; Docker builds never noticed because `COPY . .` copies from disk, not from git, but a fresh `git clone` would have been missing the storage backend entirely. Fixed by anchoring the pattern (`/storage/`) and committing the four previously-untracked files.
+
+Everything else described below (Phase 8+ items) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
 
 ## Why these technology choices
 
@@ -176,7 +185,7 @@ make lint-web       # eslint
 
 ## Trade-offs (so far)
 
-- Auth guard on the frontend is client-side (`useEffect` redirect) for now; a middleware-based redirect is a Phase 7 (security hardening) item so unauthenticated users never see even a flash of protected UI.
+- **Auth guard on the frontend is still client-side** (`useEffect` redirect), not fixed in Phase 7 as originally sketched — it turns out to need a bigger change than "add middleware.ts": Next.js middleware runs at the edge and can only see cookies/headers, not `localStorage`, and this app stores the JWT in `localStorage`. A real fix means switching to an httpOnly cookie-based session, which is a legitimate Phase 7-adjacent security improvement but a bigger architectural change than the rest of this phase — left open rather than half-done.
 - **Background processing via `FastAPI BackgroundTasks`, not a real task queue.** This runs in-process and is lost if the API process restarts mid-job — acceptable for an MVP where processing takes seconds, but Redis is already in the stack specifically so this can move to a proper queue (RQ/Celery/arq) without changing the pipeline logic itself, which is already isolated in `document_service.process_document()`.
 - **Chunking is regex-heuristic, not ML-based structure detection.** It handles common contract heading styles (`8.2 Termination`, `ARTICLE VIII - TERMINATION`) but will miss unusual formatting. Documented as a known limitation rather than overclaiming a general-purpose document parser.
 - **DOCX has no real page numbers** (Word doesn't store fixed page boundaries in the XML without rendering), so DOCX chunks have `page: null`. PDF and the future PDF-viewer-based citation UI (Phase 3) rely on real page numbers, which PDF provides natively.
@@ -201,7 +210,7 @@ make lint-web       # eslint
 - [x] Phase 4 — LangGraph agent, tools, guardrails, abstention
 - [x] Phase 5 — Risk analysis, document comparison
 - [x] Phase 6 — Observability (Langfuse), evaluation framework, regression testing
-- [ ] Phase 7 — Security hardening, rate limiting, audit logs
+- [x] Phase 7 — Security hardening, rate limiting, audit logs
 - [ ] Phase 8 — Production Docker, CI/CD, Terraform/AWS
 - [ ] Phase 9 — UI polish
 - [ ] Phase 10 — Full run, fixes, final docs

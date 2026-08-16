@@ -5,7 +5,7 @@ from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.errors import AppError, app_error_handler, unhandled_exception_handler
 from app.core.logging import configure_logging
-from app.core.middleware import RequestContextMiddleware
+from app.core.middleware import RateLimitMiddleware, RequestContextMiddleware
 
 settings = get_settings()
 configure_logging(settings.DEBUG)
@@ -18,7 +18,12 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-app.add_middleware(RequestContextMiddleware)
+# Starlette's add_middleware() prepends to the middleware stack, so the
+# *last* middleware registered here is the *first* to run for an incoming
+# request. RequestContextMiddleware must run before RateLimitMiddleware so
+# request.state.request_id is already set when the rate limiter builds its
+# 429 response body — hence it's added last, despite reading top-to-bottom
+# as if it were first.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -26,6 +31,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(RequestContextMiddleware)
 
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
