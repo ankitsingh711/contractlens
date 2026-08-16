@@ -2,6 +2,7 @@
 
 import { LogOut, Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/hooks/use-auth";
 import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 function initials(name: string) {
   return name
@@ -42,11 +44,17 @@ export function Topbar() {
   const title =
     Object.entries(TITLES).find(([href]) => pathname.startsWith(href))?.[1] ?? "ContractLens AI";
 
+  useEffect(() => {
+    document.title = title === "ContractLens AI" ? title : `${title} · ContractLens AI`;
+  }, [title]);
+
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-3">
         <Sheet>
-          <SheetTrigger render={<Button variant="ghost" size="icon" className="md:hidden" />}>
+          <SheetTrigger
+            render={<Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation menu" />}
+          >
             <Menu className="h-5 w-5" />
           </SheetTrigger>
           <SheetContent side="left" className="w-64 p-0">
@@ -55,29 +63,32 @@ export function Topbar() {
         </Sheet>
         <h1 className="text-sm font-semibold">{title}</h1>
       </div>
-      {user && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button variant="ghost" className="flex items-center gap-2 px-2" />}
-          >
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs">{initials(user.full_name)}</AvatarFallback>
-            </Avatar>
-            <span className="hidden text-sm font-medium sm:inline">{user.full_name}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <p className="text-sm font-medium">{user.full_name}</p>
-              <p className="text-xs font-normal text-muted-foreground">{user.email}</p>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-destructive">
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+      <div className="flex items-center gap-1">
+        <ThemeToggle />
+        {user && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" className="flex items-center gap-2 px-2" />}
+            >
+              <Avatar className="h-7 w-7">
+                <AvatarFallback className="text-xs">{initials(user.full_name)}</AvatarFallback>
+              </Avatar>
+              <span className="hidden text-sm font-medium sm:inline">{user.full_name}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <p className="text-sm font-medium">{user.full_name}</p>
+                <p className="text-xs font-normal text-muted-foreground">{user.email}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={logout} className="text-destructive">
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
     </header>
   );
 }

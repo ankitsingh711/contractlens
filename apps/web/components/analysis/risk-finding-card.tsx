@@ -21,6 +21,7 @@ export function RiskFindingCard({ finding }: { finding: RiskFinding }) {
     <div className={cn("rounded-lg border border-l-4 bg-card", SEVERITY_STYLES[finding.severity])}>
       <button
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
         className="flex w-full items-center gap-2 px-3 py-2.5 text-left"
       >
         <span className="flex-1 text-sm font-medium">{finding.title}</span>

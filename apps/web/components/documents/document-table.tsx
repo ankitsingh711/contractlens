@@ -75,7 +75,11 @@ export function DocumentTable({ documents }: { documents: Document[] }) {
               <TableCell className="text-muted-foreground">{formatDate(doc.created_at)}</TableCell>
               <TableCell>
                 <DropdownMenu>
-                  <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />}>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${doc.filename}`} />
+                    }
+                  >
                     <MoreHorizontal className="h-4 w-4" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">

@@ -56,7 +56,8 @@ export function ChatMessage({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="mt-1 opacity-0 transition-opacity group-hover:opacity-100"
+                aria-label={copied ? "Copied" : "Copy response"}
+                className="mt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 onClick={copy}
               >
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}

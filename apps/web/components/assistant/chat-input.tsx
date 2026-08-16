@@ -43,7 +43,7 @@ export function ChatInput({
           rows={2}
           className="flex-1 resize-none rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
         />
-        <Button size="icon" onClick={submit} disabled={disabled || !value.trim()}>
+        <Button size="icon" aria-label="Send message" onClick={submit} disabled={disabled || !value.trim()}>
           <Send className="h-4 w-4" />
         </Button>
       </div>

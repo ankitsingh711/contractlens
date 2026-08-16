@@ -4,7 +4,7 @@ An AI contract intelligence platform for legal, compliance, procurement, and fin
 
 This is a portfolio project built to demonstrate production AI engineering practices: hybrid retrieval, an explicit-state LangGraph agent, citation grounding with abstention, evaluation/regression testing, and cost/latency observability — not just "chat with a PDF."
 
-Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 8 (production Docker, CI/CD, Terraform/AWS architecture) complete.**
+Built incrementally in phases; this README and `docs/` are updated as each phase lands. **Current status: Phase 9 (UI polish) complete.**
 
 ## Why this project exists
 
@@ -127,7 +127,17 @@ Full RAG and agent architecture diagrams land in `docs/rag.md` and `docs/agent.m
 - **Frontend tests, from zero**: apps/web had no tests before this phase — a real gap against the project's own testing goals, not busywork padding. Added Vitest + React Testing Library (confirmed as this Next.js version's documented approach by reading `node_modules/next/dist/docs/` directly, per this repo's own `AGENTS.md` warning that this version has non-default conventions) with 20 tests covering citation-marker rendering (`FormattedAnswer` — the same class of attribution bug that was caught and fixed in the backend's `faithfulness_score`), the `apiFetch`/`ApiError` wrapper every API call goes through, and the risk-score severity-band boundaries (the off-by-one-prone kind of logic worth locking down).
 - **Tests**: 84/84 backend + 20/20 new frontend tests passing.
 
-Everything else described below (Phase 9+ items) is **designed but not yet built** — this README states what's real vs. planned so it stays trustworthy as the project grows.
+## What's implemented so far (Phase 9)
+
+No screenshot/browser tooling is available in this environment, so this phase is a code-level polish pass plus structural verification (curl for status codes/HTML markers, `docker exec` for container behavior) — not a visual review. Stated plainly rather than claimed as more than it is.
+
+- **Dark mode, actually wired up.** `next-themes` was already an installed dependency and `components/ui/sonner.tsx` already called `useTheme()` — but there was no `ThemeProvider` anywhere, so it silently had no effect, and the full dark-mode CSS palette already sitting in `globals.css` (`.dark { ... }`) was unreachable no matter what the user's system theme was. Added a `ThemeProvider` (`attribute="class"`, system-aware) to the root layout, a toggle button in the topbar, and verified live: the anti-FOUC theme script is actually present in the served HTML, not just in the component tree.
+- **Per-page browser tab titles.** Every route previously showed the same static "ContractLens AI" title. Rather than restructure all 12 client-component pages into server/client splits just to use the metadata API, the topbar's already-centralized route→title map now also drives `document.title` — one change point instead of twelve.
+- **Branded 404 and error pages.** `app/not-found.tsx`, `app/error.tsx` (root-level, required to render its own `<html>`/`<body>` per Next.js convention since the root layout may itself have failed), and `app/(dashboard)/error.tsx` (nested, keeps the dashboard shell) replace Next's default unstyled fallbacks. Verified live: a nonexistent route returns a real 404 status with the custom page, not just custom markup on a 200.
+- **Accessibility fixes on real gaps, not padding.** Four icon-only interactive elements had no accessible name (`aria-label`) — the assistant's send button, the copy-response button (which was also only reachable via hover, invisible to keyboard focus until `focus-visible:opacity-100` was added), the mobile nav trigger, and the per-document actions menu. Two disclosure-pattern buttons (agent-run step details, risk-finding details) gained `aria-expanded`. Checked and confirmed clean elsewhere: no hardcoded Tailwind color utility lacked a `dark:` counterpart, and the two existing shadcn dialog/sheet close buttons already had proper `sr-only` labels.
+- **Tests, lint, and build unaffected**: 84/84 backend + 20/20 frontend tests still pass, ruff/tsc/eslint clean, `next build` succeeds (now emitting `/_not-found` and `/api/health` as expected additional routes).
+
+Everything else described below (Phase 10 — full run and final polish) is what's left.
 
 ## Why these technology choices
 
@@ -213,6 +223,8 @@ GitHub Actions (`.github/workflows/ci.yml`) implements `Lint → Type Check → 
 
 ## Trade-offs (so far)
 
+- **Phase 9's "polish" is code-level only — no visual/browser testing was performed.** There is no screenshot or browser-automation tool in this environment, so claims are limited to what can be verified structurally: HTTP status codes, served HTML content, container health, `tsc`/`eslint`/`next build`/test results. Layout/spacing/visual-contrast issues that only show up when actually looking at rendered pixels would not have been caught.
+- **Per-page titles are set via `document.title` in a `useEffect`, not the Next.js metadata API.** All 12 routes are client components (they need hooks for auth/data-fetching), and the metadata API requires a server component. Restructuring every page into a server-wrapper + client-view split just to set a `<title>` was judged not worth the churn versus one centralized `document.title` effect in the topbar (and a matching one in the auth shell) — noted here because it's a conscious trade-off, not an oversight; a page that needs real per-route `<meta>` tags for SEO/social-sharing (this app is behind auth, so that's not a current need) would need the proper split.
 - **Auth guard on the frontend is still client-side** (`useEffect` redirect), not fixed in Phase 7 as originally sketched — it turns out to need a bigger change than "add middleware.ts": Next.js middleware runs at the edge and can only see cookies/headers, not `localStorage`, and this app stores the JWT in `localStorage`. A real fix means switching to an httpOnly cookie-based session, which is a legitimate Phase 7-adjacent security improvement but a bigger architectural change than the rest of this phase — left open rather than half-done.
 - **Background processing via `FastAPI BackgroundTasks`, not a real task queue.** This runs in-process and is lost if the API process restarts mid-job — acceptable for an MVP where processing takes seconds, but Redis is already in the stack specifically so this can move to a proper queue (RQ/Celery/arq) without changing the pipeline logic itself, which is already isolated in `document_service.process_document()`.
 - **Terraform has not been applied against a real AWS account.** No AWS credentials are available in this environment, so "correct, well-organized IaC that passes `terraform validate`" is the honest bar here, not "proven to deploy." `terraform fmt`/`init -backend=false`/`validate` all pass, and the resource graph was reviewed carefully, but there is no substitute for a real `terraform apply` — treat this as a strong, reviewable starting point, not a battle-tested module. The S3 backend for remote state is also left commented out with setup instructions rather than configured, since there's no bucket to point it at.
@@ -243,7 +255,7 @@ GitHub Actions (`.github/workflows/ci.yml`) implements `Lint → Type Check → 
 - [x] Phase 6 — Observability (Langfuse), evaluation framework, regression testing
 - [x] Phase 7 — Security hardening, rate limiting, audit logs
 - [x] Phase 8 — Production Docker, CI/CD, Terraform/AWS
-- [ ] Phase 9 — UI polish
+- [x] Phase 9 — UI polish
 - [ ] Phase 10 — Full run, fixes, final docs
 
 ## Documentation

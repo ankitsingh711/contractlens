@@ -25,6 +25,7 @@ export function StepItem({ step }: { step: AgentStep }) {
     <div className="rounded-lg border">
       <button
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/50"
       >
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
