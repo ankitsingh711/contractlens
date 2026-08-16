@@ -33,7 +33,7 @@ export function SidebarNav() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-14 items-center gap-2 border-b px-4">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-mint text-white shadow-sm">
           <Scale className="h-4 w-4" />
         </div>
         <span className="text-sm font-semibold tracking-tight">ContractLens AI</span>
@@ -47,10 +47,10 @@ export function SidebarNav() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "border-mint bg-primary text-primary-foreground"
+                  : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <Icon className="h-4 w-4" />
