@@ -1,0 +1,55 @@
+# Copy to terraform.tfvars (git-ignored) and fill in real values before
+# `terraform apply`. Nothing below is a real secret — sensitive values
+# (app_secret_key, provider API keys) are deliberately left blank here;
+# pass them via TF_VAR_* environment variables or a separate, git-ignored
+# *.auto.tfvars file instead of committing them, even to a private repo.
+
+project_name = "contractlens"
+environment  = "production"
+aws_region   = "us-east-1"
+
+vpc_cidr           = "10.0.0.0/16"
+availability_zones = ["us-east-1a", "us-east-1b"]
+single_nat_gateway = true
+
+# --- Sizing (defaults are already portfolio-scale; shown here for clarity) --
+
+api_cpu           = 512
+api_memory        = 1024
+api_desired_count = 2
+
+web_cpu           = 256
+web_memory        = 512
+web_desired_count = 2
+
+api_image_tag = "latest"
+web_image_tag = "latest"
+
+db_instance_class        = "db.t4g.micro"
+db_allocated_storage      = 20
+db_max_allocated_storage  = 100
+db_multi_az                = false
+db_backup_retention_days   = 7
+
+redis_node_type = "cache.t4g.micro"
+
+document_bucket_force_destroy = false
+
+# --- Optional custom domain (leave blank to use the default CloudFront
+#     domain and self-signed... i.e. CloudFront's own default certificate) --
+
+domain_name         = ""
+acm_certificate_arn = ""
+
+# --- Secrets — DO NOT put real values here if this file is ever committed.
+#     Left blank intentionally; set via environment variables instead, e.g.:
+#       export TF_VAR_app_secret_key="$(openssl rand -hex 32)"
+#       export TF_VAR_openai_api_key="sk-..."
+#     or a separate secrets.auto.tfvars that is in .gitignore.
+
+app_secret_key       = ""
+openai_api_key        = ""
+anthropic_api_key     = ""
+cohere_api_key        = ""
+langfuse_public_key   = ""
+langfuse_secret_key   = ""

@@ -1,0 +1,11 @@
+# Build context for apps/web's Dockerfile (context: ./apps/web)
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+.DS_Store
+README.md

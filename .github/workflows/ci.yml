@@ -1,0 +1,337 @@
+name: CI
+
+# Pipeline (per product spec): Lint -> Type Check -> Unit Tests -> Integration
+# Tests -> Build -> Security Scan -> Docker Build.
+#
+# The backend and frontend run as two parallel tracks. Within each track,
+# jobs are chained with `needs:` to match the spec's stage order; jobs that
+# don't depend on each other (e.g. backend lint vs. frontend lint) run
+# concurrently. Docker Build and Security Scan sit at the end and require
+# every test/build job to have gone green first, so a broken build or a
+# failing test blocks an image from ever being produced.
+#
+# See inline comments on `typecheck-frontend` and `test-backend` for why
+# there is no separate `typecheck-backend` job and no separate
+# `integration-backend` job — both are deliberate, not omissions.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  # ---------------------------------------------------------------------
+  # LINT
+  # ---------------------------------------------------------------------
+  lint-backend:
+    name: Lint (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements-dev.txt
+      - name: ruff check
+        working-directory: apps/api
+        run: ruff check app tests
+
+  lint-frontend:
+    name: Lint (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: eslint
+        working-directory: apps/web
+        run: npx eslint .
+
+  # ---------------------------------------------------------------------
+  # TYPE CHECK
+  #
+  # Backend: mypy is listed in requirements-dev.txt but has no mypy.ini /
+  # pyproject [tool.mypy] section anywhere in the repo, and running it
+  # as-is against app/ currently surfaces ~32 pre-existing errors in
+  # legacy code (untyped third-party stubs, Optional narrowing, etc.)
+  # that are unrelated to this CI task and would immediately redden the
+  # pipeline if gated on. Rather than inventing a mypy config that either
+  # fails on day one or silently ignores everything, backend type safety
+  # in this pipeline is covered by `ruff check` (lint-backend above),
+  # which includes several type-adjacent lint rules (e.g. flake8-bugbear,
+  # pyflakes unused/undefined-name checks). There is intentionally no
+  # separate typecheck-backend job — introducing real mypy coverage is
+  # follow-up work, not something to fake here.
+  # ---------------------------------------------------------------------
+  typecheck-frontend:
+    name: Type Check (frontend)
+    runs-on: ubuntu-latest
+    needs: lint-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: tsc --noEmit
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+  # ---------------------------------------------------------------------
+  # UNIT TESTS / INTEGRATION TESTS
+  #
+  # Backend: apps/api/tests/ is already a mostly integration-style suite
+  # (real Postgres via SQLAlchemy, a real Redis for rate limiting, the
+  # actual retrieval pipeline and LangGraph agent graph run end-to-end
+  # against a mock LLM/embedding provider). There is no meaningful split
+  # between "pure unit" and "integration" tests in this codebase today —
+  # e.g. test_chat_api.py, test_documents.py, and test_evaluation.py all
+  # exercise the real DB and app stack in a single test run. Rather than
+  # fabricating an artificial unit/integration split (e.g. by tagging
+  # tests with markers that don't reflect a real architectural boundary),
+  # this single `pytest tests/` run serves as both the Unit Tests and
+  # Integration Tests stage for the backend. If/when true isolated unit
+  # tests (mocked DB, no network) are added, they can be split out with a
+  # pytest marker and a second job at that point.
+  #
+  # Frontend: the new Vitest suite (Part 1) is unit/component-level only
+  # (jsdom, mocked fetch) — there is no frontend E2E/integration suite
+  # (e.g. Playwright) in this repo yet, so there is no separate frontend
+  # "integration" job either.
+  # ---------------------------------------------------------------------
+  test-backend:
+    name: Test (backend) — unit + integration
+    runs-on: ubuntu-latest
+    needs: lint-backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: contractlens
+          POSTGRES_PASSWORD: contractlens
+          # tests/conftest.py always rewrites DATABASE_URL to target a
+          # "<db>_test" database, so the service DB is created with that
+          # name directly rather than relying on a separate create step.
+          POSTGRES_DB: contractlens_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U contractlens -d contractlens_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://contractlens:contractlens@localhost:5432/contractlens_test
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: apps/api/requirements-dev.txt
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements-dev.txt
+      - name: Enable pgvector extension
+        run: PGPASSWORD=contractlens psql -h localhost -U contractlens -d contractlens_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
+      - name: pytest
+        working-directory: apps/api
+        # PROMPTS_DIR / EVALUATION_DATASET_DIR default to ../../prompts and
+        # ../../evaluation/datasets (relative to apps/api), which resolve
+        # correctly from the checked-out repo root — matches local dev.
+        run: pytest tests/ -q
+
+  test-frontend:
+    name: Test (frontend)
+    runs-on: ubuntu-latest
+    needs: typecheck-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: vitest
+        working-directory: apps/web
+        run: npm test
+
+  # ---------------------------------------------------------------------
+  # BUILD
+  # ---------------------------------------------------------------------
+  build-backend:
+    name: Build (backend)
+    runs-on: ubuntu-latest
+    needs: test-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: apps/api/requirements.txt
+      - name: Install dependencies
+        working-directory: apps/api
+        run: pip install -r requirements.txt
+      # Python has no compiled build artifact; this confirms the app and
+      # all dependencies resolve and import cleanly.
+      - name: Smoke import
+        working-directory: apps/api
+        run: python -c "from app.main import app"
+
+  build-frontend:
+    name: Build (frontend)
+    runs-on: ubuntu-latest
+    needs: test-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: next build
+        working-directory: apps/web
+        env:
+          # Matches the ARG/ENV default baked into apps/web/Dockerfile.
+          NEXT_PUBLIC_API_URL: http://localhost:8000/api
+        run: npx next build
+
+  # ---------------------------------------------------------------------
+  # SECURITY SCAN
+  #
+  # Threshold: `npm audit --audit-level=high` is a hard gate (frontend
+  # deps are currently clean — 0 vulnerabilities at any level), so any
+  # newly-introduced high/critical JS advisory fails the build.
+  #
+  # `pip-audit` is run and its full report is always printed, but it does
+  # NOT fail the job (`continue-on-error: true`). Reason: pip-audit has no
+  # built-in severity filter (it reports "vulnerable or not", not
+  # CVSS/high-vs-low), and this repo's current transitive dependency tree
+  # (langgraph/langchain-core/starlette/urllib3/pypdf, etc., pinned by
+  # requirements.txt) already has dozens of known advisories against
+  # older releases. Gating the pipeline on all of them today would redden
+  # CI on unrelated PRs and isn't something this task can respons­ibly fix
+  # by itself (it needs a coordinated dependency upgrade + regression
+  # pass, out of scope here). Making it non-blocking-but-visible is the
+  # pragmatic middle ground: it surfaces the report on every run without
+  # turning CI into permanent noise. Revisit once a dependency upgrade
+  # pass has landed.
+  # ---------------------------------------------------------------------
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [build-backend, build-frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: pip-audit (backend deps, informational — see comment above)
+        working-directory: apps/api
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: npm audit (frontend deps, blocking on high/critical)
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+
+  # ---------------------------------------------------------------------
+  # DOCKER BUILD
+  #
+  # Build-only: no registry credentials are configured, so images are
+  # never pushed. This still catches real "works on my machine" Docker
+  # breakage (missing files in build context, lockfile drift, etc.) in a
+  # clean environment. Requires every test/build job to have passed first,
+  # matching "production deployment should require passing tests."
+  # ---------------------------------------------------------------------
+  docker-build:
+    name: Docker Build (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, security-scan]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            context: apps/api
+            dockerfile: apps/api/Dockerfile
+            build-args: ""
+          - image: web
+            context: apps/web
+            dockerfile: apps/web/Dockerfile
+            build-args: NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: contractlens-${{ matrix.image }}:ci
+          build-args: ${{ matrix.build-args }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: Trivy scan (${{ matrix.image }} image, informational)
+        # Base images (python:3.12-slim, node:22-alpine) and the app's own
+        # OS-level packages routinely carry known CVEs upstream hasn't
+        # patched yet, and the Dockerfiles here are still being actively
+        # refined by another workstream. Report findings for visibility
+        # without blocking this pipeline on base-image CVEs unrelated to
+        # this task; revisit as a blocking gate once the Dockerfiles are
+        # finalized.
+        uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: contractlens-${{ matrix.image }}:ci
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"

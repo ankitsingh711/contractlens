@@ -1,0 +1,47 @@
+# Production-shaped override for docker-compose.yml.
+#
+# Usage (standard Compose override pattern — the base file is still required,
+# this is NOT a standalone replacement):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# What this changes vs. the base (local dev) file:
+#   - api: drops the `./apps/api:/app` live-reload bind mount so the built
+#     image is fully self-contained (what you test is what ships), and sets
+#     ENV=production so docker-entrypoint.sh starts uvicorn WITHOUT --reload.
+#   - api/web: restart policy tightened to `on-failure` (bounded retries)
+#     instead of `unless-stopped`, since in a real deployment a container
+#     that keeps failing should surface rather than loop forever silently.
+#     (For a genuine prod host you'd typically front this with an
+#     orchestrator/process supervisor; for a single-host demo deployment
+#     `on-failure` is a reasonable middle ground.)
+#   - postgres: no longer publishes 5433 to the host. In local dev that port
+#     is a convenience for connecting a DB client directly; in a prod-shaped
+#     deployment the database should only be reachable from other containers
+#     on the compose network, not from the host/outside world.
+#   - redis: same reasoning — internal-only, no published port.
+#   - web: still publishes 3000 and api still publishes 8000, since in a
+#     single-host demo deployment those are the actual entrypoints an
+#     upstream reverse proxy / load balancer would target. Removing them
+#     would leave the stack unreachable, which isn't the goal here.
+
+services:
+  postgres:
+    restart: on-failure
+    ports: !reset []
+
+  redis:
+    restart: on-failure
+    ports: !reset []
+
+  api:
+    restart: on-failure
+    environment:
+      ENV: production
+    volumes: !reset
+      - ./prompts:/app/prompts:ro
+      - ./evaluation:/evaluation:ro
+      - api_storage:/app/storage
+
+  web:
+    restart: on-failure

@@ -1,0 +1,19 @@
+# Build context for apps/api's Dockerfile (context: ./apps/api)
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+storage/
+tests/
+.pytest_cache
+*.egg-info/
+.DS_Store
+README.md

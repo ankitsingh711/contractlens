@@ -1,0 +1,23 @@
+# Root .dockerignore — applies when the repo root is used as a build
+# context. apps/api and apps/web build from their own directories (with
+# their own .dockerignore files); this covers any future root-context build.
+.git/
+.claude/
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+apps/api/storage/
+infrastructure/.terraform/
+*.tfstate
+*.tfstate.*
+.DS_Store
