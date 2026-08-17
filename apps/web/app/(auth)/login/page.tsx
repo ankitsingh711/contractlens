@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { GitBranch, Quote, ShieldCheck } from "lucide-react";
 import { z } from "zod";
 
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -12,6 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api-client";
+
+const HIGHLIGHTS = [
+  { icon: ShieldCheck, label: "Abstains instead of guessing when evidence is thin" },
+  { icon: Quote, label: "Every claim traces back to a cited clause" },
+  { icon: GitBranch, label: "Inspect the agent's reasoning, step by step" },
+];
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -39,7 +46,15 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthShell title="Welcome back" description="Sign in to your ContractLens workspace">
+    <AuthShell
+      title="Welcome back"
+      description="Sign in to your ContractLens workspace"
+      imageSrc="https://images.unsplash.com/photo-1521791136064-7986c2920216?q=80&w=1600&auto=format&fit=crop"
+      imageAlt="Two colleagues shaking hands over a signed agreement in an office"
+      panelHeading="Contract review your team can actually trust."
+      panelSubheading="Sign back in to pick up where you left off — every answer still grounded in a real, retrieved clause."
+      highlights={HIGHLIGHTS}
+    >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>

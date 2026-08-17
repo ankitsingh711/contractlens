@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { ScanSearch, Sparkles, UploadCloud } from "lucide-react";
 import { z } from "zod";
 
 import { AuthShell } from "@/components/auth/auth-shell";
@@ -12,6 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiError } from "@/lib/api-client";
+
+const HIGHLIGHTS = [
+  { icon: UploadCloud, label: "Upload PDFs, DOCX, or TXT — no setup required" },
+  { icon: ScanSearch, label: "Automatic risk analysis across 12 clause categories" },
+  { icon: Sparkles, label: "A LangGraph agent that shows its reasoning" },
+];
 
 const schema = z.object({
   full_name: z.string().min(1, "Your name is required."),
@@ -44,6 +51,11 @@ export default function RegisterPage() {
     <AuthShell
       title="Create your workspace"
       description="Set up ContractLens for your organization"
+      imageSrc="https://images.unsplash.com/photo-1450101499163-c8848c66ca85?q=80&w=1600&auto=format&fit=crop"
+      imageAlt="A person signing a printed contract at a desk"
+      panelHeading="From raw contract to grounded answer in minutes."
+      panelSubheading="Set up your workspace and start asking questions your legal team can trust — with a citation behind every word."
+      highlights={HIGHLIGHTS}
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
